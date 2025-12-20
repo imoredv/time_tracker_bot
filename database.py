@@ -11,9 +11,9 @@ def init_db():
     Инициализация базы данных.
     """
     # Путь к папке data
-    DATA_DIR = "/data/"+DB_NAME
+    data_dir = "/data/"+DB_NAME
 
-    conn = sqlite3.connect(str(DATA_DIR))
+    conn = sqlite3.connect(str(data_dir))
     cursor = conn.cursor()
 
     # Таблица пользователей
