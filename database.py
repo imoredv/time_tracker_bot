@@ -3,14 +3,29 @@
 """
 
 import sqlite3
+import os
 from datetime import datetime, timedelta
 from config import DB_NAME
+
+def get_db_path():
+    """
+    Получение пути к базе данных в директории data.
+    """
+    # Создаем директорию data, если её нет
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+        print(f"✅ Создана директория data: {data_dir}")
+
+    # Возвращаем полный путь к базе данных
+    return os.path.join(data_dir, DB_NAME)
 
 def init_db():
     """
     Инициализация базы данных.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # Таблица пользователей
@@ -62,13 +77,14 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("✅ База данных инициализирована")
+    print(f"✅ База данных инициализирована: {db_path}")
 
 def add_user(user_id, username, first_name, last_name):
     """
     Добавление нового пользователя.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     try:
@@ -92,7 +108,8 @@ def get_current_activity(user_id):
     """
     Получение текущей активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -111,7 +128,8 @@ def start_activity(user_id, activity_type):
     """
     Начало новой активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     completed_activity = None
@@ -169,7 +187,8 @@ def get_daily_stats(user_id, date=None):
     """
     Статистика за день с учетом текущей активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     if date is None:
@@ -229,7 +248,8 @@ def get_period_stats(user_id, period_days):
     """
     Статистика за период с учетом текущей активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     start_date = (datetime.now() - timedelta(days=period_days)).date()
@@ -301,7 +321,8 @@ def update_user_setting(user_id, setting_name, value):
     """
     Обновление настроек.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     if setting_name == 'reminder_interval':
@@ -342,7 +363,8 @@ def get_user_settings(user_id):
     """
     Получение настроек.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -369,7 +391,8 @@ def clear_user_data(user_id):
     """
     Удаление данных.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('DELETE FROM activities WHERE user_id = ?', (user_id,))
@@ -391,7 +414,8 @@ def update_custom_activity(user_id, activity_type, custom_name, emoji):
     """
     Обновление пользовательского названия активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -406,7 +430,8 @@ def get_custom_activity(user_id, activity_type):
     """
     Получение пользовательского названия активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -429,7 +454,8 @@ def get_all_custom_activities(user_id):
     """
     Получение всех пользовательских активностей.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -453,7 +479,8 @@ def delete_custom_activity(user_id, activity_type):
     """
     Удаление пользовательской активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -468,7 +495,8 @@ def get_users_for_reminders():
     """
     Пользователи для напоминаний с учетом тихого времени.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     current_time = datetime.now()
@@ -545,7 +573,8 @@ def update_last_reminder_time(user_id):
     """
     Обновление времени последнего напоминания.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     current_time = datetime.now().isoformat()
@@ -563,7 +592,8 @@ def get_all_users():
     """
     Все пользователи.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute('SELECT user_id, first_name FROM users')
@@ -576,7 +606,8 @@ def get_user_stats(user_id):
     """
     Основная статистика пользователя с учетом текущей активности.
     """
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # Общее количество активностей
