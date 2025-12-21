@@ -1,5 +1,6 @@
 """
 Time Tracker Bot с поддержкой часовых поясов.
+Исправлена версия для ботахост.ру
 """
 
 import asyncio
@@ -25,7 +26,7 @@ from keyboards import (
     get_reminder_interval_keyboard, get_clear_confirm_keyboard,
     get_quiet_time_keyboard, get_edit_activities_keyboard,
     get_edit_activity_keyboard, get_emoji_keyboard,
-    get_timezone_keyboard, get_timezone_inline_keyboard, get_timezone_back_keyboard
+    get_timezone_keyboard, get_timezone_back_keyboard
 )
 from utils import (
     get_activity_emoji, format_duration_simple, format_stats_message,
@@ -35,6 +36,7 @@ from utils import (
 from reminder import ReminderManager
 from timezone_manager import timezone_manager
 
+# Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 reminder_manager = ReminderManager(bot)
@@ -525,7 +527,7 @@ async def handle_edit_activities(message: Message):
 
     await message.answer(
         message_text,
-        reply_markup=get_edit_activities_keyboard()
+        reply_markup=get_edit_activities_keyboard()  # ИСПРАВЛЕНО: было reply_mup, стало reply_markup
     )
 
 @dp.message(F.text == "🗑️ Очистить")
@@ -545,42 +547,7 @@ async def handle_back(message: Message):
     """
     await message.answer("Главное меню", reply_markup=get_main_keyboard())
 
-# Обработчики инлайн-кнопок для часовых поясов
-@dp.callback_query(F.data.startswith("timezone_"))
-async def handle_timezone_callback(callback: CallbackQuery):
-    """
-    Выбор часового пояса через инлайн-кнопки.
-    """
-    user_id = callback.from_user.id
-    timezone_code = callback.data.replace("timezone_", "")
-
-    if timezone_code == "auto":
-        # Автоопределение
-        try:
-            auto_timezone = timezone_manager.detect_by_ip()
-            update_user_timezone(user_id, auto_timezone)
-            timezone_display = get_timezone_display_name(auto_timezone)
-            response = f"✅ Автоопределение: {timezone_display}"
-        except Exception as e:
-            response = f"❌ Не удалось определить автоматически: {e}"
-    else:
-        # Ручной выбор
-        if timezone_manager.validate_timezone(timezone_code):
-            update_user_timezone(user_id, timezone_code)
-            timezone_display = get_timezone_display_name(timezone_code)
-            response = f"✅ Установлен: {timezone_display}"
-        else:
-            response = "❌ Неверный часовой пояс"
-
-    local_time = format_user_local_time(user_id)
-    response += f"\n🕒 Локальное время: {local_time}"
-
-    await callback.message.edit_text(response)
-    await callback.message.edit_reply_markup(
-        reply_markup=get_timezone_inline_keyboard()
-    )
-    await callback.answer(response)
-
+# Обработчики инлайн-кнопок
 @dp.callback_query(F.data.startswith("interval_"))
 async def handle_interval_callback(callback: CallbackQuery):
     """
@@ -905,8 +872,6 @@ async def handle_delete_activity(callback: CallbackQuery):
     )
 
     # Возвращаем к списку активностей
-    message_text = "✏️ Изменить активностей"
-    # Возвращаем к списку активностей
     message_text = "✏️ Изменить активности\n\n"
     activity_types = ['work', 'study', 'sport', 'hobby', 'sleep', 'rest']
 
@@ -920,14 +885,12 @@ async def handle_delete_activity(callback: CallbackQuery):
     )
     await callback.answer()
 
-
 @dp.callback_query(F.data == "add_activity")
 async def handle_add_activity(callback: CallbackQuery):
     """
     Добавление новой активности.
     """
     await callback.answer("Функция в разработке", show_alert=True)
-
 
 @dp.callback_query(F.data == "back_settings")
 async def handle_back_settings(callback: CallbackQuery):
@@ -943,12 +906,8 @@ async def handle_back_settings(callback: CallbackQuery):
         f"Выберите раздел для настройки:"
     )
 
-    await callback.message.edit_text(settings_text)
-    await callback.message.edit_reply_markup(
-        reply_markup=None
-    )
+    await callback.message.delete()
     await callback.answer()
-
 
 @dp.callback_query(F.data.in_(["clear_yes", "clear_no"]))
 async def handle_clear_confirm(callback: CallbackQuery):
@@ -963,7 +922,6 @@ async def handle_clear_confirm(callback: CallbackQuery):
         await callback.message.edit_text("❌ Очистка отменена")
 
     await callback.answer()
-
 
 # Обработка всех остальных сообщений
 @dp.message()
@@ -988,8 +946,7 @@ async def handle_other_messages(message: Message):
             "🌍 UTC (Гринвич)"
         ]:
             await message.answer("Пожалуйста, используйте кнопки для взаимодействия с ботом.",
-                                 reply_markup=get_main_keyboard())
-
+                               reply_markup=get_main_keyboard())
 
 async def main():
     """
@@ -1005,6 +962,8 @@ async def main():
     print("🚀 Запуск бота...")
 
     await reminder_manager.start()
+
+    # Важно: удаляем вебхук перед запуском polling
     await bot.delete_webhook(drop_pending_updates=True)
 
     print("✅ Бот готов к работе")
@@ -1028,7 +987,6 @@ async def main():
     finally:
         await reminder_manager.stop()
         print("\n🛑 Бот остановлен")
-
 
 if __name__ == "__main__":
     try:

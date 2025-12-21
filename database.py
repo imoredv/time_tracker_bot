@@ -143,26 +143,6 @@ def get_user_timezone(user_id):
         return result[0]
     return 'Europe/Moscow'  # По умолчанию
 
-def get_user_timezone_info(user_id):
-    """
-    Получение информации о часовом поясе пользователя.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT user_id, first_name, timezone FROM users WHERE user_id = ?', (user_id,))
-    result = cursor.fetchone()
-    conn.close()
-
-    if result:
-        return {
-            'user_id': result[0],
-            'first_name': result[1],
-            'timezone': result[2]
-        }
-    return None
-
 def get_current_activity(user_id):
     """
     Получение текущей активности с учетом часового пояса пользователя.
@@ -706,37 +686,3 @@ def get_user_stats(user_id):
         'total_seconds': total_seconds,
         'top_activities': top_activities
     }
-
-def get_users_by_timezone(timezone):
-    """
-    Получение пользователей по часовому поясу.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT user_id, first_name FROM users WHERE timezone = ?', (timezone,))
-    users = cursor.fetchall()
-    conn.close()
-
-    return users
-
-def get_timezone_stats():
-    """
-    Статистика по часовым поясам.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT timezone, COUNT(*) as user_count
-        FROM users
-        GROUP BY timezone
-        ORDER BY user_count DESC
-    ''')
-
-    stats = cursor.fetchall()
-    conn.close()
-
-    return stats
