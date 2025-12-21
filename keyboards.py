@@ -1,8 +1,9 @@
 """
-Клавиатуры.
+Клавиатуры с поддержкой часовых поясов.
 """
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from timezone_manager import timezone_manager
 
 def get_main_keyboard():
     """
@@ -41,11 +42,57 @@ def get_settings_keyboard():
         keyboard=[
             [KeyboardButton(text="⏰ Напоминания"), KeyboardButton(text="🌙 Тихий час")],
             [KeyboardButton(text="✏️ Изменить"), KeyboardButton(text="🗑️ Очистить")],
-            [KeyboardButton(text="⬅️ Назад")]
+            [KeyboardButton(text="🌍 Часовой пояс"), KeyboardButton(text="⬅️ Назад")]
         ],
         resize_keyboard=True
     )
     return keyboard
+
+def get_timezone_keyboard():
+    """
+    Клавиатура выбора часового пояса.
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🌍 Автоопределение"), KeyboardButton(text="🇷🇺 Москва (UTC+3)")],
+            [KeyboardButton(text="🇷🇺 Екатеринбург (UTC+5)"), KeyboardButton(text="🇷🇺 Владивосток (UTC+10)")],
+            [KeyboardButton(text="🇺🇦 Киев (UTC+2)"), KeyboardButton(text="🇧🇾 Минск (UTC+3)")],
+            [KeyboardButton(text="🇪🇺 Лондон (UTC+0)"), KeyboardButton(text="🇺🇸 Нью-Йорк (UTC-5)")],
+            [KeyboardButton(text="⬅️ Назад")]
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Выберите часовой пояс"
+    )
+    return keyboard
+
+def get_timezone_inline_keyboard():
+    """
+    Инлайн-клавиатура выбора часового пояса.
+    """
+    timezones = timezone_manager.get_timezone_keyboard()
+
+    # Преобразуем строки в кнопки
+    inline_keyboard = []
+    for row in timezones:
+        inline_row = []
+        for tz_name in row:
+            callback_data = f"timezone_{timezone_manager.common_timezones.get(tz_name, 'Europe/Moscow')}"
+            inline_row.append(
+                InlineKeyboardButton(text=tz_name, callback_data=callback_data)
+            )
+        inline_keyboard.append(inline_row)
+
+    # Добавляем кнопку "Автоопределение"
+    inline_keyboard.append([
+        InlineKeyboardButton(text="🌍 Автоопределение", callback_data="timezone_auto")
+    ])
+
+    # Добавляем кнопку "Назад"
+    inline_keyboard.append([
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="back_settings")
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=True):
     """
@@ -88,7 +135,6 @@ def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=
 def get_quiet_time_keyboard(quiet_enabled=True, start_time="22:00", end_time="06:00"):
     """
     Клавиатура настройки тихого времени.
-    Теперь только 2 основные кнопки: начало и конец с временем на них.
     """
     # Кнопка статуса
     status_text = "🌙 Вкл" if quiet_enabled else "🌙 Выкл"
@@ -97,7 +143,7 @@ def get_quiet_time_keyboard(quiet_enabled=True, start_time="22:00", end_time="06
         callback_data="toggle_quiet"
     )
 
-    # Кнопки времени - теперь время прямо на кнопках
+    # Кнопки времени
     time_buttons = [
         [
             InlineKeyboardButton(text=f"🕘 Начать: {start_time}", callback_data="set_quiet_start")
@@ -186,5 +232,17 @@ def get_clear_confirm_keyboard():
                 InlineKeyboardButton(text="❌ Нет", callback_data="clear_no")
             ]
         ]
+    )
+    return keyboard
+
+def get_timezone_back_keyboard():
+    """
+    Клавиатура для возврата из настроек часового пояса.
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="⬅️ Назад")]
+        ],
+        resize_keyboard=True
     )
     return keyboard

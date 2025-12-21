@@ -1,23 +1,18 @@
 """
-Вспомогательные функции.
+Вспомогательные функции с поддержкой часовых поясов.
 """
 
-from config import ACTIVITIES
-from database import get_current_activity
+import pytz
+from datetime import datetime
+from config import ACTIVITIES, ACTIVITY_EMOJIS
+from database import get_current_activity, get_user_timezone
+from timezone_manager import timezone_manager
 
 def get_activity_emoji(activity_type):
     """
     Эмодзи для активности (по умолчанию).
     """
-    emojis = {
-        'work': '💼',
-        'study': '📚',
-        'sport': '🏃',
-        'hobby': '🎨',
-        'sleep': '💤',
-        'rest': '☕️'
-    }
-    return emojis.get(activity_type, '⏱️')
+    return ACTIVITY_EMOJIS.get(activity_type, '⏱️')
 
 def format_duration_simple(seconds):
     """
@@ -109,3 +104,51 @@ def format_interval(seconds):
     else:
         hours = seconds // 3600
         return f"{hours} часов"
+
+def get_user_local_time(user_id):
+    """
+    Получение локального времени пользователя.
+    """
+    timezone_str = get_user_timezone(user_id)
+    try:
+        tz = pytz.timezone(timezone_str)
+        return datetime.now(tz)
+    except:
+        return datetime.now()
+
+def format_user_local_time(user_id):
+    """
+    Форматирование локального времени пользователя.
+    """
+    local_time = get_user_local_time(user_id)
+    timezone_str = get_user_timezone(user_id)
+
+    # Получаем смещение от UTC
+    try:
+        tz = pytz.timezone(timezone_str)
+        offset = tz.utcoffset(datetime.now())
+        hours = int(offset.total_seconds() / 3600)
+        offset_str = f"UTC+{hours}" if hours >= 0 else f"UTC{hours}"
+    except:
+        offset_str = "UTC+3"
+
+    return f"{local_time.strftime('%H:%M')} ({offset_str})"
+
+def get_timezone_display_name(timezone_str):
+    """
+    Получение отображаемого имени часового пояса.
+    """
+    for display_name, tz_name in timezone_manager.common_timezones.items():
+        if tz_name == timezone_str:
+            return display_name
+    return timezone_str
+
+def format_timezone_info(user_id):
+    """
+    Форматирование информации о часовом поясе пользователя.
+    """
+    timezone_str = get_user_timezone(user_id)
+    display_name = get_timezone_display_name(timezone_str)
+    local_time = get_user_local_time(user_id)
+
+    return f"🌍 {display_name}\n🕒 {local_time.strftime('%H:%M')}"

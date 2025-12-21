@@ -1,5 +1,5 @@
 """
-Time Tracker Bot.
+Time Tracker Bot с поддержкой часовых поясов.
 """
 
 import asyncio
@@ -11,22 +11,29 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 
-from config import BOT_TOKEN, ADMIN_ID, ACTIVITIES
+from config import BOT_TOKEN, ADMIN_ID, ACTIVITIES, DEFAULT_TIMEZONE
 from database import (
     init_db, add_user, start_activity, get_current_activity,
     get_daily_stats, get_period_stats, update_user_setting,
     get_user_settings, clear_user_data, update_custom_activity,
     get_custom_activity, get_all_custom_activities, delete_custom_activity,
-    get_all_users, get_users_for_reminders
+    get_all_users, get_users_for_reminders, update_user_timezone,
+    get_user_timezone, get_user_timezone_info, get_timezone_stats
 )
 from keyboards import (
     get_main_keyboard, get_statistics_keyboard, get_settings_keyboard,
     get_reminder_interval_keyboard, get_clear_confirm_keyboard,
     get_quiet_time_keyboard, get_edit_activities_keyboard,
-    get_edit_activity_keyboard, get_emoji_keyboard
+    get_edit_activity_keyboard, get_emoji_keyboard,
+    get_timezone_keyboard, get_timezone_inline_keyboard, get_timezone_back_keyboard
 )
-from utils import get_activity_emoji, format_duration_simple, format_stats_message, format_interval
+from utils import (
+    get_activity_emoji, format_duration_simple, format_stats_message,
+    format_interval, format_timezone_info, get_timezone_display_name,
+    format_user_local_time
+)
 from reminder import ReminderManager
+from timezone_manager import timezone_manager
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -56,16 +63,29 @@ def get_display_activity(user_id, activity_type):
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     """
-    Команда /start.
+    Команда /start с определением часового пояса.
     """
+    # Определяем часовой пояс
+    try:
+        auto_timezone = timezone_manager.detect_by_ip()
+    except:
+        auto_timezone = DEFAULT_TIMEZONE
+
     add_user(
         user_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name,
-        last_name=message.from_user.last_name
+        last_name=message.from_user.last_name,
+        timezone=auto_timezone
     )
 
-    await message.answer("⏱️ Учёт времени", reply_markup=get_main_keyboard())
+    welcome_text = (
+        f"⏱️ Учёт времени\n\n"
+        f"Часовой пояс автоматически определен как: {get_timezone_display_name(auto_timezone)}\n"
+        f"Локальное время: {format_user_local_time(message.from_user.id)}"
+    )
+
+    await message.answer(welcome_text, reply_markup=get_main_keyboard())
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -89,6 +109,7 @@ async def cmd_help(message: Message):
 • ⏰ Напоминания - настройка интервала напоминаний
 • 🌙 Тихий час - время, когда бот не беспокоит
 • ✏️ Изменить - изменение названий и эмодзи активностей
+• 🌍 Часовой пояс - настройка вашего часового пояса
 • 🗑️ Очистить - удаление всех данных
 
 <b>Статистика:</b>
@@ -98,8 +119,47 @@ async def cmd_help(message: Message):
 • 📊 Год - статистика за последние 365 дней
 
 ⏱️ - обозначает текущую активность в статистике
+
+<b>Часовые пояса:</b>
+• Бот автоматически определяет ваш часовой пояс
+• Вы можете изменить его в настройках
+• Напоминания учитывают ваш часовой пояс и тихое время
     """
     await message.answer(help_text, parse_mode="HTML")
+
+@dp.message(Command("timezone"))
+async def cmd_timezone(message: Message):
+    """
+    Команда для проверки часового пояса.
+    """
+    user_id = message.from_user.id
+    timezone_info = get_user_timezone_info(user_id)
+
+    if timezone_info:
+        current_time = format_user_local_time(user_id)
+        timezone_display = get_timezone_display_name(timezone_info['timezone'])
+
+        response = (
+            f"🌍 Ваш часовой пояс:\n"
+            f"• {timezone_display}\n"
+            f"• Код: {timezone_info['timezone']}\n"
+            f"• Локальное время: {current_time}\n\n"
+            f"Изменить часовой пояс можно в ⚙️ Настройки → 🌍 Часовой пояс"
+        )
+    else:
+        response = "Не удалось определить ваш часовой пояс. Пожалуйста, используйте /start"
+
+    await message.answer(response)
+
+@dp.message(Command("time"))
+async def cmd_time(message: Message):
+    """
+    Команда для отображения текущего времени.
+    """
+    user_id = message.from_user.id
+    local_time = format_user_local_time(user_id)
+
+    await message.answer(f"🕒 Ваше локальное время: {local_time}")
 
 # Административные команды
 @dp.message(Command("test"))
@@ -154,6 +214,7 @@ async def cmd_status(message: Message):
 
     all_users = get_all_users()
     users_for_reminders = get_users_for_reminders()
+    timezone_stats = get_timezone_stats()
 
     status_text = (
         f"🤖 Статус бота:\n\n"
@@ -161,10 +222,15 @@ async def cmd_status(message: Message):
         f"• Пользователей для напоминаний: {len(users_for_reminders)}\n"
         f"• Напоминания: {'✅ Вкл' if reminder_manager.is_running else '❌ Выкл'}\n"
         f"• База данных: ✅ Работает\n"
-        f"• Версия: 2.0 (полная)\n"
+        f"• Версия: 3.0 (с часовыми поясами)\n"
         f"• Ваш ID: {user_id_int}\n"
-        f"• ADMIN_ID: {admin_id_int}"
+        f"• ADMIN_ID: {admin_id_int}\n\n"
+        f"📊 Статистика по часовым поясам:\n"
     )
+
+    for tz, count in timezone_stats:
+        tz_display = get_timezone_display_name(tz)
+        status_text += f"• {tz_display}: {count} пользователей\n"
 
     await message.answer(status_text)
 
@@ -187,12 +253,13 @@ async def cmd_users(message: Message):
 
     users_text = f"👥 Пользователи бота (всего: {len(all_users)}):\n\n"
 
-    for idx, (user_id, first_name) in enumerate(all_users, 1):
+    for idx, (user_id, first_name, timezone) in enumerate(all_users, 1):
         name_display = f" ({first_name})" if first_name else ""
-        users_text += f"{idx}. ID: {user_id}{name_display}\n"
+        timezone_display = get_timezone_display_name(timezone)
+        users_text += f"{idx}. ID: {user_id}{name_display}\n   📍 {timezone_display}\n"
 
         # Чтобы сообщение не было слишком длинным
-        if idx % 20 == 0:
+        if idx % 10 == 0:
             await message.answer(users_text)
             users_text = ""
 
@@ -324,7 +391,85 @@ async def handle_settings(message: Message):
     """
     Настройки.
     """
-    await message.answer("⚙️ Настройки", reply_markup=get_settings_keyboard())
+    user_id = message.from_user.id
+    timezone_info = format_timezone_info(user_id)
+
+    settings_text = (
+        f"⚙️ Настройки\n\n"
+        f"{timezone_info}\n\n"
+        f"Выберите раздел для настройки:"
+    )
+
+    await message.answer(settings_text, reply_markup=get_settings_keyboard())
+
+@dp.message(F.text == "🌍 Часовой пояс")
+async def handle_timezone(message: Message):
+    """
+    Настройка часового пояса.
+    """
+    user_id = message.from_user.id
+    current_timezone = get_user_timezone(user_id)
+    current_display = get_timezone_display_name(current_timezone)
+    current_time = format_user_local_time(user_id)
+
+    message_text = (
+        f"🌍 Часовой пояс\n\n"
+        f"Текущий: {current_display}\n"
+        f"Локальное время: {current_time}\n\n"
+        f"Выберите новый часовой пояс:"
+    )
+
+    await message.answer(message_text, reply_markup=get_timezone_keyboard())
+
+@dp.message(F.text == "🌍 Автоопределение")
+async def handle_auto_timezone(message: Message):
+    """
+    Автоопределение часового пояса.
+    """
+    user_id = message.from_user.id
+
+    try:
+        auto_timezone = timezone_manager.detect_by_ip()
+        update_user_timezone(user_id, auto_timezone)
+
+        timezone_display = get_timezone_display_name(auto_timezone)
+        local_time = format_user_local_time(user_id)
+
+        response = (
+            f"✅ Часовой пояс обновлен!\n\n"
+            f"• {timezone_display}\n"
+            f"• Локальное время: {local_time}"
+        )
+    except Exception as e:
+        response = f"❌ Не удалось определить часовой пояс автоматически: {e}"
+
+    await message.answer(response, reply_markup=get_settings_keyboard())
+
+# Обработка выбора часового пояса
+@dp.message(F.text.in_(list(timezone_manager.common_timezones.keys())))
+async def handle_timezone_selection(message: Message):
+    """
+    Выбор часового пояса из списка.
+    """
+    user_id = message.from_user.id
+    timezone_display = message.text
+
+    # Получаем IANA код часового пояса
+    timezone_code = timezone_manager.common_timezones.get(timezone_display, DEFAULT_TIMEZONE)
+
+    # Обновляем часовой пояс
+    if update_user_timezone(user_id, timezone_code):
+        local_time = format_user_local_time(user_id)
+
+        response = (
+            f"✅ Часовой пояс обновлен!\n\n"
+            f"• {timezone_display}\n"
+            f"• Локальное время: {local_time}"
+        )
+    else:
+        response = "❌ Не удалось обновить часовой пояс"
+
+    await message.answer(response, reply_markup=get_settings_keyboard())
 
 @dp.message(F.text == "⏰ Напоминания")
 async def handle_reminders(message: Message):
@@ -380,7 +525,7 @@ async def handle_edit_activities(message: Message):
 
     await message.answer(
         message_text,
-        reply_mup=get_edit_activities_keyboard()
+        reply_markup=get_edit_activities_keyboard()
     )
 
 @dp.message(F.text == "🗑️ Очистить")
@@ -400,7 +545,42 @@ async def handle_back(message: Message):
     """
     await message.answer("Главное меню", reply_markup=get_main_keyboard())
 
-# Обработчики инлайн-кнопок
+# Обработчики инлайн-кнопок для часовых поясов
+@dp.callback_query(F.data.startswith("timezone_"))
+async def handle_timezone_callback(callback: CallbackQuery):
+    """
+    Выбор часового пояса через инлайн-кнопки.
+    """
+    user_id = callback.from_user.id
+    timezone_code = callback.data.replace("timezone_", "")
+
+    if timezone_code == "auto":
+        # Автоопределение
+        try:
+            auto_timezone = timezone_manager.detect_by_ip()
+            update_user_timezone(user_id, auto_timezone)
+            timezone_display = get_timezone_display_name(auto_timezone)
+            response = f"✅ Автоопределение: {timezone_display}"
+        except Exception as e:
+            response = f"❌ Не удалось определить автоматически: {e}"
+    else:
+        # Ручной выбор
+        if timezone_manager.validate_timezone(timezone_code):
+            update_user_timezone(user_id, timezone_code)
+            timezone_display = get_timezone_display_name(timezone_code)
+            response = f"✅ Установлен: {timezone_display}"
+        else:
+            response = "❌ Неверный часовой пояс"
+
+    local_time = format_user_local_time(user_id)
+    response += f"\n🕒 Локальное время: {local_time}"
+
+    await callback.message.edit_text(response)
+    await callback.message.edit_reply_markup(
+        reply_markup=get_timezone_inline_keyboard()
+    )
+    await callback.answer(response)
+
 @dp.callback_query(F.data.startswith("interval_"))
 async def handle_interval_callback(callback: CallbackQuery):
     """
@@ -725,6 +905,8 @@ async def handle_delete_activity(callback: CallbackQuery):
     )
 
     # Возвращаем к списку активностей
+    message_text = "✏️ Изменить активностей"
+    # Возвращаем к списку активностей
     message_text = "✏️ Изменить активности\n\n"
     activity_types = ['work', 'study', 'sport', 'hobby', 'sleep', 'rest']
 
@@ -738,38 +920,6 @@ async def handle_delete_activity(callback: CallbackQuery):
     )
     await callback.answer()
 
-@dp.message(EditStates.waiting_for_activity_name)
-async def handle_activity_name_input(message: Message, state: FSMContext):
-    """
-    Обработка ввода названия активности.
-    """
-    data = await state.get_data()
-    activity_type = data.get('activity_type')
-    user_id = message.from_user.id
-
-    if not activity_type:
-        await message.answer("Ошибка: не найден тип активности")
-        await state.clear()
-        return
-
-    if message.text and len(message.text) <= 30:
-        # Получаем текущий эмодзи или используем стандартный
-        custom = get_custom_activity(user_id, activity_type)
-        if custom and custom['emoji']:
-            current_emoji = custom['emoji']
-        else:
-            current_emoji = get_activity_emoji(activity_type)
-
-        update_custom_activity(user_id, activity_type, message.text, current_emoji)
-
-        display_text = get_display_activity(user_id, activity_type)
-        await message.answer(
-            f"✅ Обновлено: {display_text}",
-            reply_markup=get_settings_keyboard()
-        )
-        await state.clear()
-    else:
-        await message.answer("❌ Название должно быть не длиннее 30 символов")
 
 @dp.callback_query(F.data == "add_activity")
 async def handle_add_activity(callback: CallbackQuery):
@@ -778,13 +928,27 @@ async def handle_add_activity(callback: CallbackQuery):
     """
     await callback.answer("Функция в разработке", show_alert=True)
 
+
 @dp.callback_query(F.data == "back_settings")
 async def handle_back_settings(callback: CallbackQuery):
     """
     Назад в настройки.
     """
-    await callback.message.delete()
+    user_id = callback.from_user.id
+    timezone_info = format_timezone_info(user_id)
+
+    settings_text = (
+        f"⚙️ Настройки\n\n"
+        f"{timezone_info}\n\n"
+        f"Выберите раздел для настройки:"
+    )
+
+    await callback.message.edit_text(settings_text)
+    await callback.message.edit_reply_markup(
+        reply_markup=None
+    )
     await callback.answer()
+
 
 @dp.callback_query(F.data.in_(["clear_yes", "clear_no"]))
 async def handle_clear_confirm(callback: CallbackQuery):
@@ -800,6 +964,7 @@ async def handle_clear_confirm(callback: CallbackQuery):
 
     await callback.answer()
 
+
 # Обработка всех остальных сообщений
 @dp.message()
 async def handle_other_messages(message: Message):
@@ -812,33 +977,46 @@ async def handle_other_messages(message: Message):
         if message.text not in [
             "💼 Работа", "📚 Учёба", "🏃 Спорт", "🎨 Хобби", "💤 Сон", "☕️ Отдых",
             "📊 Статистика", "⚙️ Настройки", "📅 День", "📆 Неделя", "📅 Месяц", "📊 Год",
-            "⏰ Напоминания", "🌙 Тихий час", "✏️ Изменить", "🗑️ Очистить", "⬅️ Назад"
+            "⏰ Напоминания", "🌙 Тихий час", "✏️ Изменить", "🗑️ Очистить", "⬅️ Назад",
+            "🌍 Часовой пояс", "🌍 Автоопределение", "🇷🇺 Москва (UTC+3)",
+            "🇷🇺 Калининград (UTC+2)", "🇷🇺 Самара (UTC+4)", "🇷🇺 Екатеринбург (UTC+5)",
+            "🇷🇺 Омск (UTC+6)", "🇷🇺 Красноярск (UTC+7)", "🇷🇺 Иркутск (UTC+8)",
+            "🇷🇺 Якутск (UTC+9)", "🇷🇺 Владивосток (UTC+10)", "🇷🇺 Магадан (UTC+11)",
+            "🇷🇺 Камчатка (UTC+12)", "🇺🇦 Киев (UTC+2)", "🇧🇾 Минск (UTC+3)",
+            "🇪🇺 Лондон (UTC+0)", "🇪🇺 Берлин (UTC+1)", "🇺🇸 Нью-Йорк (UTC-5)",
+            "🇺🇸 Лос-Анджелес (UTC-8)", "🇨🇳 Пекин (UTC+8)", "🇯🇵 Токио (UTC+9)",
+            "🌍 UTC (Гринвич)"
         ]:
             await message.answer("Пожалуйста, используйте кнопки для взаимодействия с ботом.",
-                               reply_markup=get_main_keyboard())
+                                 reply_markup=get_main_keyboard())
+
 
 async def main():
     """
-    Запуск бота.
+    Запуск бота с поддержкой часовых поясов.
     """
     init_db()
 
     print("=" * 50)
-    print("🤖 Time Tracker Bot")
+    print("🤖 Time Tracker Bot v3.0")
     print("=" * 50)
-    print("✅ База данных инициализирована")
+    print("✅ База данных инициализирована (с часовыми поясами)")
+    print("✅ Менеджер часовых поясов загружен")
     print("🚀 Запуск бота...")
 
     await reminder_manager.start()
     await bot.delete_webhook(drop_pending_updates=True)
 
     print("✅ Бот готов к работе")
-    print("✅ Напоминания запущены")
+    print("✅ Напоминания запущены (с учетом часовых поясов)")
     print("⏰ Интервал по умолчанию: 30 минут")
     print("🌙 Тихий час по умолчанию: 22:00 - 06:00")
+    print("🌍 Часовой пояс по умолчанию: Europe/Moscow")
     print("=" * 50)
     print("📱 Используйте /start для начала работы")
     print("ℹ️  Используйте /help для справки")
+    print("🌍 Используйте /timezone для проверки часового пояса")
+    print("🕒 Используйте /time для проверки локального времени")
     if ADMIN_ID:
         print(f"🛠️  Администратор: ID {ADMIN_ID}")
     print("=" * 50)
@@ -850,6 +1028,7 @@ async def main():
     finally:
         await reminder_manager.stop()
         print("\n🛑 Бот остановлен")
+
 
 if __name__ == "__main__":
     try:

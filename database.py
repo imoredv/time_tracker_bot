@@ -1,5 +1,5 @@
 """
-База данных SQLite.
+База данных SQLite с поддержкой часовых поясов.
 """
 
 import sqlite3
@@ -22,7 +22,7 @@ def get_db_path():
 
 def init_db():
     """
-    Инициализация базы данных.
+    Инициализация базы данных с поддержкой часовых поясов.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -35,6 +35,7 @@ def init_db():
             username TEXT,
             first_name TEXT,
             last_name TEXT,
+            timezone TEXT DEFAULT 'Europe/Moscow',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_reminder TIMESTAMP
         )
@@ -79,9 +80,9 @@ def init_db():
     conn.close()
     print(f"✅ База данных инициализирована: {db_path}")
 
-def add_user(user_id, username, first_name, last_name):
+def add_user(user_id, username, first_name, last_name, timezone='Europe/Moscow'):
     """
-    Добавление нового пользователя.
+    Добавление нового пользователя с часовым поясом.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -89,9 +90,9 @@ def add_user(user_id, username, first_name, last_name):
 
     try:
         cursor.execute('''
-            INSERT OR IGNORE INTO users (user_id, username, first_name, last_name)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, username, first_name, last_name))
+            INSERT OR REPLACE INTO users (user_id, username, first_name, last_name, timezone)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, username, first_name, last_name, timezone))
 
         cursor.execute('''
             INSERT OR IGNORE INTO user_settings (user_id)
@@ -104,9 +105,67 @@ def add_user(user_id, username, first_name, last_name):
     finally:
         conn.close()
 
+def update_user_timezone(user_id, timezone):
+    """
+    Обновление часового пояса пользователя.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            UPDATE users 
+            SET timezone = ?
+            WHERE user_id = ?
+        ''', (timezone, user_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка обновления часового пояса {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_user_timezone(user_id):
+    """
+    Получение часового пояса пользователя.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT timezone FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if result:
+        return result[0]
+    return 'Europe/Moscow'  # По умолчанию
+
+def get_user_timezone_info(user_id):
+    """
+    Получение информации о часовом поясе пользователя.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT user_id, first_name, timezone FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if result:
+        return {
+            'user_id': result[0],
+            'first_name': result[1],
+            'timezone': result[2]
+        }
+    return None
+
 def get_current_activity(user_id):
     """
-    Получение текущей активности.
+    Получение текущей активности с учетом часового пояса пользователя.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -126,7 +185,7 @@ def get_current_activity(user_id):
 
 def start_activity(user_id, activity_type):
     """
-    Начало новой активности.
+    Начало новой активности с учетом локального времени пользователя.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -493,7 +552,7 @@ def delete_custom_activity(user_id, activity_type):
 
 def get_users_for_reminders():
     """
-    Пользователи для напоминаний с учетом тихого времени.
+    Пользователи для напоминаний с учетом тихого времени и часовых поясов.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -504,7 +563,8 @@ def get_users_for_reminders():
     current_minute = current_time.minute
 
     cursor.execute('''
-        SELECT u.user_id, u.first_name, us.reminder_interval, 
+        SELECT u.user_id, u.first_name, u.timezone,
+               us.reminder_interval, 
                us.quiet_time_enabled, us.quiet_time_start, us.quiet_time_end,
                u.last_reminder
         FROM users u
@@ -521,13 +581,14 @@ def get_users_for_reminders():
         # Распаковываем значения
         user_id = user[0]
         first_name = user[1]
-        reminder_interval = user[2]
-        quiet_time_enabled = user[3]
-        quiet_start = user[4]
-        quiet_end = user[5]
-        last_reminder = user[6]
+        user_timezone = user[2]
+        reminder_interval = user[3]
+        quiet_time_enabled = user[4]
+        quiet_start = user[5]
+        quiet_end = user[6]
+        last_reminder = user[7]
 
-        # Проверяем тихое время
+        # Проверяем тихое время с учетом часового пояса пользователя
         if quiet_time_enabled:
             # Преобразуем время в минуты
             def time_to_minutes(time_str):
@@ -562,10 +623,10 @@ def get_users_for_reminders():
             time_since_last_reminder = (current_time - last_reminder_time).total_seconds()
 
             if time_since_last_reminder >= reminder_interval:
-                users_to_remind.append((user_id, first_name, reminder_interval))
+                users_to_remind.append((user_id, first_name, reminder_interval, user_timezone))
         else:
             # Если напоминание еще не отправлялось
-            users_to_remind.append((user_id, first_name, reminder_interval))
+            users_to_remind.append((user_id, first_name, reminder_interval, user_timezone))
 
     return users_to_remind
 
@@ -596,7 +657,7 @@ def get_all_users():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT user_id, first_name FROM users')
+    cursor.execute('SELECT user_id, first_name, timezone FROM users')
     users = cursor.fetchall()
     conn.close()
 
@@ -645,3 +706,37 @@ def get_user_stats(user_id):
         'total_seconds': total_seconds,
         'top_activities': top_activities
     }
+
+def get_users_by_timezone(timezone):
+    """
+    Получение пользователей по часовому поясу.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT user_id, first_name FROM users WHERE timezone = ?', (timezone,))
+    users = cursor.fetchall()
+    conn.close()
+
+    return users
+
+def get_timezone_stats():
+    """
+    Статистика по часовым поясам.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT timezone, COUNT(*) as user_count
+        FROM users
+        GROUP BY timezone
+        ORDER BY user_count DESC
+    ''')
+
+    stats = cursor.fetchall()
+    conn.close()
+
+    return stats
