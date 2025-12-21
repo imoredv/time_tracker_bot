@@ -93,7 +93,7 @@ class TimezoneManager:
 
     def get_offset_hours(self, timezone_str: str) -> int:
         """
-        Получение смещения часового пояса от UTC в часах.
+        Получение смещения часового пояса от UTC в часах..
         """
         try:
             tz = pytz.timezone(timezone_str)
