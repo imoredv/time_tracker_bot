@@ -11,13 +11,10 @@ def get_db_path():
     """
     Получение пути к базе данных в директории data.
     """
-    # Создаем директорию data, если её нет
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
         print(f"✅ Создана директория data: {data_dir}")
-
-    # Возвращаем полный путь к базе данных
     return os.path.join(data_dir, DB_NAME)
 
 def init_db():
@@ -28,7 +25,6 @@ def init_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Таблица пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -41,7 +37,6 @@ def init_db():
         )
     ''')
 
-    # Таблица активностей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS activities (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +48,6 @@ def init_db():
         )
     ''')
 
-    # Таблица настроек пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id INTEGER PRIMARY KEY,
@@ -65,7 +59,6 @@ def init_db():
         )
     ''')
 
-    # Таблица пользовательских названий активностей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS custom_activities (
             user_id INTEGER,
@@ -141,7 +134,27 @@ def get_user_timezone(user_id):
 
     if result:
         return result[0]
-    return 'Europe/Moscow'  # По умолчанию
+    return 'Europe/Moscow'
+
+def get_user_timezone_info(user_id):
+    """
+    Получение информации о часовом поясе пользователя.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT user_id, first_name, timezone FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if result:
+        return {
+            'user_id': result[0],
+            'first_name': result[1],
+            'timezone': result[2]
+        }
+    return None
 
 def get_current_activity(user_id):
     """
@@ -173,7 +186,6 @@ def start_activity(user_id, activity_type):
 
     completed_activity = None
 
-    # Проверяем, активна ли уже такая же активность
     cursor.execute('''
         SELECT activity_type, start_time 
         FROM activities 
@@ -187,7 +199,6 @@ def start_activity(user_id, activity_type):
         conn.close()
         return None
 
-    # Завершаем текущую активность
     cursor.execute('''
         SELECT activity_type, start_time 
         FROM activities 
@@ -210,7 +221,6 @@ def start_activity(user_id, activity_type):
 
         completed_activity = current_activity
 
-    # Начинаем новую
     start_time = datetime.now()
     cursor.execute('''
         INSERT INTO activities (user_id, activity_type, start_time)
@@ -233,7 +243,6 @@ def get_daily_stats(user_id, date=None):
     if date is None:
         date = datetime.now().date()
 
-    # Получаем завершенные активности за день
     cursor.execute('''
         SELECT activity_type, SUM(duration_seconds)
         FROM activities 
@@ -245,7 +254,6 @@ def get_daily_stats(user_id, date=None):
 
     completed_stats = cursor.fetchall()
 
-    # Получаем текущую активность (если она начата сегодня)
     cursor.execute('''
         SELECT activity_type, start_time 
         FROM activities 
@@ -258,30 +266,23 @@ def get_daily_stats(user_id, date=None):
     current_activity = cursor.fetchone()
     conn.close()
 
-    # Создаем словарь для статистики
     stats_dict = {}
 
-    # Добавляем завершенные активности
     for activity_type, duration in completed_stats:
         stats_dict[activity_type] = duration
 
-    # Добавляем текущую активность (если есть)
     if current_activity:
         activity_type, start_time_str = current_activity
         start_time = datetime.fromisoformat(start_time_str)
         current_time = datetime.now()
         current_duration = int((current_time - start_time).total_seconds())
 
-        # Добавляем к существующей статистике или создаем новую запись
         if activity_type in stats_dict:
             stats_dict[activity_type] += current_duration
         else:
             stats_dict[activity_type] = current_duration
 
-    # Преобразуем обратно в список
-    stats = [(activity_type, duration) for activity_type, duration in stats_dict.items()]
-
-    return stats
+    return [(activity_type, duration) for activity_type, duration in stats_dict.items()]
 
 def get_period_stats(user_id, period_days):
     """
@@ -294,7 +295,6 @@ def get_period_stats(user_id, period_days):
     start_date = (datetime.now() - timedelta(days=period_days)).date()
     today = datetime.now().date()
 
-    # Получаем завершенные активности за период
     cursor.execute('''
         SELECT activity_type, SUM(duration_seconds)
         FROM activities 
@@ -306,7 +306,6 @@ def get_period_stats(user_id, period_days):
 
     completed_stats = cursor.fetchall()
 
-    # Получаем текущую активность (если она начата в период)
     cursor.execute('''
         SELECT activity_type, start_time 
         FROM activities 
@@ -319,33 +318,25 @@ def get_period_stats(user_id, period_days):
     current_activity = cursor.fetchone()
     conn.close()
 
-    # Создаем словарь для статистики
     stats_dict = {}
 
-    # Добавляем завершенные активности
     for activity_type, duration in completed_stats:
         stats_dict[activity_type] = duration
 
-    # Добавляем текущую активность (если есть)
     if current_activity:
         activity_type, start_time_str = current_activity
         start_time = datetime.fromisoformat(start_time_str)
         current_time = datetime.now()
 
-        # Проверяем, начата ли активность сегодня (в пределах периода)
         if start_time.date() >= start_date:
             current_duration = int((current_time - start_time).total_seconds())
 
-            # Добавляем к существующей статистике или создаем новую запись
             if activity_type in stats_dict:
                 stats_dict[activity_type] += current_duration
             else:
                 stats_dict[activity_type] = current_duration
 
-    # Преобразуем обратно в список
-    stats = [(activity_type, duration) for activity_type, duration in stats_dict.items()]
-
-    return stats
+    return [(activity_type, duration) for activity_type, duration in stats_dict.items()]
 
 def format_duration_simple(seconds):
     """
@@ -358,45 +349,52 @@ def format_duration_simple(seconds):
 
 def update_user_setting(user_id, setting_name, value):
     """
-    Обновление настроек.
+    Обновление настроек пользователя.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    if setting_name == 'reminder_interval':
-        cursor.execute('''
-            UPDATE user_settings 
-            SET reminder_interval = ?
-            WHERE user_id = ?
-        ''', (value, user_id))
-    elif setting_name == 'notifications_enabled':
-        cursor.execute('''
-            UPDATE user_settings 
-            SET notifications_enabled = ?
-            WHERE user_id = ?
-        ''', (value, user_id))
-    elif setting_name == 'quiet_time_enabled':
-        cursor.execute('''
-            UPDATE user_settings 
-            SET quiet_time_enabled = ?
-            WHERE user_id = ?
-        ''', (value, user_id))
-    elif setting_name == 'quiet_time_start':
-        cursor.execute('''
-            UPDATE user_settings 
-            SET quiet_time_start = ?
-            WHERE user_id = ?
-        ''', (value, user_id))
-    elif setting_name == 'quiet_time_end':
-        cursor.execute('''
-            UPDATE user_settings 
-            SET quiet_time_end = ?
-            WHERE user_id = ?
-        ''', (value, user_id))
+    try:
+        if setting_name == 'reminder_interval':
+            cursor.execute('''
+                UPDATE user_settings 
+                SET reminder_interval = ?
+                WHERE user_id = ?
+            ''', (value, user_id))
+        elif setting_name == 'notifications_enabled':
+            cursor.execute('''
+                UPDATE user_settings 
+                SET notifications_enabled = ?
+                WHERE user_id = ?
+            ''', (value, user_id))
+        elif setting_name == 'quiet_time_enabled':
+            cursor.execute('''
+                UPDATE user_settings 
+                SET quiet_time_enabled = ?
+                WHERE user_id = ?
+            ''', (value, user_id))
+        elif setting_name == 'quiet_time_start':
+            cursor.execute('''
+                UPDATE user_settings 
+                SET quiet_time_start = ?
+                WHERE user_id = ?
+            ''', (value, user_id))
+        elif setting_name == 'quiet_time_end':
+            cursor.execute('''
+                UPDATE user_settings 
+                SET quiet_time_end = ?
+                WHERE user_id = ?
+            ''', (value, user_id))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        print(f"✅ Настройка {setting_name} обновлена для пользователя {user_id}: {value}")
+
+    except Exception as e:
+        print(f"❌ Ошибка обновления настроек {user_id}: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
 
 def get_user_settings(user_id):
     """
@@ -558,7 +556,6 @@ def get_users_for_reminders():
     users_to_remind = []
 
     for user in users:
-        # Распаковываем значения
         user_id = user[0]
         first_name = user[1]
         user_timezone = user[2]
@@ -568,9 +565,7 @@ def get_users_for_reminders():
         quiet_end = user[6]
         last_reminder = user[7]
 
-        # Проверяем тихое время с учетом часового пояса пользователя
         if quiet_time_enabled:
-            # Преобразуем время в минуты
             def time_to_minutes(time_str):
                 try:
                     h, m = map(int, time_str.split(':'))
@@ -582,22 +577,18 @@ def get_users_for_reminders():
             start_minutes = time_to_minutes(quiet_start)
             end_minutes = time_to_minutes(quiet_end)
 
-            # Проверка попадания в тихое время
             in_quiet_time = False
 
             if start_minutes > end_minutes:
-                # Ночное время (например, 22:00-06:00)
                 if current_minutes >= start_minutes or current_minutes < end_minutes:
                     in_quiet_time = True
             else:
-                # Дневное время
                 if start_minutes <= current_minutes < end_minutes:
                     in_quiet_time = True
 
             if in_quiet_time:
-                continue  # Пропускаем пользователя
+                continue
 
-        # Проверяем интервал напоминаний
         if last_reminder:
             last_reminder_time = datetime.fromisoformat(last_reminder)
             time_since_last_reminder = (current_time - last_reminder_time).total_seconds()
@@ -605,7 +596,6 @@ def get_users_for_reminders():
             if time_since_last_reminder >= reminder_interval:
                 users_to_remind.append((user_id, first_name, reminder_interval, user_timezone))
         else:
-            # Если напоминание еще не отправлялось
             users_to_remind.append((user_id, first_name, reminder_interval, user_timezone))
 
     return users_to_remind
@@ -643,6 +633,26 @@ def get_all_users():
 
     return users
 
+def get_timezone_stats():
+    """
+    Статистика по часовым поясам.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT timezone, COUNT(*) as user_count
+        FROM users
+        GROUP BY timezone
+        ORDER BY user_count DESC
+    ''')
+
+    stats = cursor.fetchall()
+    conn.close()
+
+    return stats
+
 def get_user_stats(user_id):
     """
     Основная статистика пользователя с учетом текущей активности.
@@ -651,15 +661,12 @@ def get_user_stats(user_id):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Общее количество активностей
     cursor.execute('SELECT COUNT(*) FROM activities WHERE user_id = ?', (user_id,))
     total_activities = cursor.fetchone()[0]
 
-    # Общее время трекинга (завершенные + текущая)
     cursor.execute('SELECT SUM(duration_seconds) FROM activities WHERE user_id = ? AND duration_seconds IS NOT NULL', (user_id,))
     total_seconds = cursor.fetchone()[0] or 0
 
-    # Добавляем текущую активность
     current_activity = get_current_activity(user_id)
     if current_activity:
         start_time = datetime.fromisoformat(current_activity[1])
@@ -667,7 +674,6 @@ def get_user_stats(user_id):
         current_duration = int((current_time - start_time).total_seconds())
         total_seconds += current_duration
 
-    # Самые частые активности
     cursor.execute('''
         SELECT activity_type, COUNT(*) as count
         FROM activities 
@@ -686,3 +692,32 @@ def get_user_stats(user_id):
         'total_seconds': total_seconds,
         'top_activities': top_activities
     }
+
+def debug_user_settings(user_id):
+    """
+    Отладочная информация о настройках пользователя.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT reminder_interval, notifications_enabled, 
+               quiet_time_enabled, quiet_time_start, quiet_time_end
+        FROM user_settings 
+        WHERE user_id = ?
+    ''', (user_id,))
+
+    settings = cursor.fetchone()
+    conn.close()
+
+    if settings:
+        return f"""
+        Настройки пользователя {user_id}:
+        • Интервал: {settings[0]} сек ({settings[0] // 60} мин)
+        • Уведомления: {'✅ Вкл' if settings[1] else '❌ Выкл'}
+        • Тихий час: {'✅ Вкл' if settings[2] else '❌ Выкл'}
+        • Начало: {settings[3]}
+        • Конец: {settings[4]}
+        """
+    return f"❌ Настройки пользователя {user_id} не найдены"
