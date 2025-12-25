@@ -1,11 +1,11 @@
 """
-Time Tracker Bot с поддержкой часовых поясов.
-Исправлена версия для ботахост.ру
+Time Tracker Bot с поддержкой часовых поясов и новой системой статистики.
+Исправленная версия для ботахост.ру
 """
 
 import asyncio
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -16,22 +16,22 @@ from config import BOT_TOKEN, ADMIN_ID, ACTIVITIES, DEFAULT_TIMEZONE
 from database import (
     init_db, add_user, start_activity, get_current_activity,
     get_daily_stats, get_period_stats, update_user_setting,
-    get_user_settings, clear_user_data, update_custom_activity,
-    get_custom_activity, get_all_custom_activities, delete_custom_activity,
-    get_all_users, get_users_for_reminders, update_user_timezone,
-    get_user_timezone, get_user_timezone_info, get_timezone_stats
+    get_user_settings, clear_user_data, get_all_users,
+    get_users_for_reminders, update_user_timezone,
+    get_user_timezone, get_user_timezone_info, get_timezone_stats,
+    get_hourly_activity_stats, get_total_stats_by_activity
 )
 from keyboards import (
     get_main_keyboard, get_statistics_keyboard, get_settings_keyboard,
-    get_reminder_interval_keyboard, get_clear_confirm_keyboard,
-    get_quiet_time_keyboard, get_edit_activities_keyboard,
-    get_edit_activity_keyboard, get_emoji_keyboard,
-    get_timezone_keyboard, get_timezone_back_keyboard
+    get_reminder_interval_keyboard, get_quiet_time_keyboard,
+    get_clear_confirm_keyboard, get_timezone_keyboard,
+    get_timezone_back_keyboard, get_reminder_buttons_keyboard,
+    get_activity_reminder_keyboard
 )
 from utils import (
     get_activity_emoji, format_duration_simple, format_stats_message,
     format_interval, format_timezone_info, get_timezone_display_name,
-    format_user_local_time
+    format_user_local_time, format_complete_stats, format_all_settings
 )
 from reminder import ReminderManager
 from timezone_manager import timezone_manager
@@ -41,26 +41,20 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 reminder_manager = ReminderManager(bot)
 
-# Состояния FSM для редактирования
+# Состояния FSM для тихого часа и выбора интервала при смене активности
 class EditStates(StatesGroup):
-    waiting_for_activity_name = State()
-    waiting_for_activity_emoji = State()
     waiting_for_quiet_start = State()
     waiting_for_quiet_end = State()
-    waiting_for_emoji_selection = State()
+    waiting_for_activity_reminder = State()  # Новое состояние для выбора интервала при смене активности
 
 # Функция для получения отображаемого названия активности
 def get_display_activity(user_id, activity_type):
     """
     Получаем название активности для отображения.
     """
-    custom = get_custom_activity(user_id, activity_type)
-    if custom and custom['custom_name'] and custom['emoji']:
-        return f"{custom['emoji']} {custom['custom_name']}"
-    else:
-        default_emoji = get_activity_emoji(activity_type)
-        default_name = ACTIVITIES.get(activity_type, activity_type)
-        return f"{default_emoji} {default_name}"
+    default_emoji = get_activity_emoji(activity_type)
+    default_name = ACTIVITIES.get(activity_type, activity_type)
+    return f"{default_emoji} {default_name}"
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -99,33 +93,34 @@ async def cmd_help(message: Message):
 
 <b>Основные функции:</b>
 • Выберите активность для начала отсчёта времени
-• При выборе другой активности, текущая автоматически завершается
+• При выборе другой активности, текуная автоматически завершается
 • Бот будет спрашивать чем вы заняты с заданным интервалом
 
 <b>Кнопки:</b>
-• 💼 Работа, 📚 Учёба, 🏃 Спорт, 🎨 Хобби, 💤 Сон, ☕️ Отдых - выбор активности
-• 📊 Статистика - просмотр статистики за разные периоды
+• 💼 Труд, 📚 Учёба, 🏃 Спорт, 🎨 Хобби, 💤 Сон, ☕️ Отдых - выбор активности
+• 📊 Статистика - просмотр статистики с графиками
 • ⚙️ Настройки - настройка бота
 
 <b>Настройки:</b>
-• ⏰ Напоминания - настройка интервала напоминаний
+• ⏰ Напоминания - настройка интервала напоминаний (включая тестовый 5 секунд)
 • 🌙 Тихий час - время, когда бот не беспокоит
-• ✏️ Изменить - изменение названий и эмодзи активностей
 • 🌍 Часовой пояс - настройка вашего часового пояса
 • 🗑️ Очистить - удаление всех данных
 
 <b>Статистика:</b>
-• 📅 День - статистика за сегодня
-• 📆 Неделя - статистика за последние 7 дней
-• 📅 Месяц - статистика за последние 30 дней
-• 📊 Год - статистика за последние 365 дней
+• 📊 Статистика - графики за последние 3 дня
+• 📅 Неделя - статистика за неделю
+• 📅 Месяц - статистика за месяц
+• 📊 Год - статистика за год
 
-⏱️ - обозначает текущую активность в статистике
+<b>Напоминания:</b>
+• Напоминания привязаны к часам (12:15, 12:30, 12:45...)
+• Можно выбрать интервал напоминаний в настройках (включая 5 секунд для тестов)
+• Можно изменить интервал в ответ на уведомление (10, 30, 60 минут)
+• При смене активности можно выбрать интервал уведомлений (10, 30, 60 минут)
+• Учитывается тихое время и часовой пояс
 
-<b>Часовые пояса:</b>
-• Бот автоматически определяет ваш часовой пояс
-• Вы можете изменить его в настройках
-• Напоминания учитывают ваш часовой пояс и тихое время
+⏱️ - обозначает текущую активность
     """
     await message.answer(help_text, parse_mode="HTML")
 
@@ -164,6 +159,28 @@ async def cmd_time(message: Message):
     await message.answer(f"🕒 Ваше локальное время: {local_time}")
 
 # Административные команды
+@dp.message(Command("test5"))
+async def cmd_test5(message: Message):
+    """
+    Быстрая установка тестового интервала 5 секунд.
+    """
+    user_id_int = int(message.from_user.id)
+    admin_id_int = int(ADMIN_ID)
+
+    if user_id_int != admin_id_int:
+        return
+
+    # Устанавливаем интервал 5 секунд
+    update_user_setting(user_id_int, 'reminder_interval', 5)
+    update_user_setting(user_id_int, 'notifications_enabled', 1)
+
+    # Сбрасываем кэш времени напоминаний для этого пользователя
+    for key in list(reminder_manager.user_next_reminder_time.keys()):
+        if key.startswith(str(user_id_int)):
+            del reminder_manager.user_next_reminder_time[key]
+
+    await message.answer("✅ Установлен тестовый интервал 5 секунд. Напоминания будут приходить каждые 5 секунд.")
+
 @dp.message(Command("test"))
 async def cmd_test(message: Message):
     """
@@ -177,31 +194,6 @@ async def cmd_test(message: Message):
 
     await reminder_manager.send_test_reminder(message.from_user.id)
     await message.answer("✅ Тестовое напоминание отправлено")
-
-@dp.message(Command("debug"))
-async def cmd_debug(message: Message):
-    """
-    Отладка настроек активностей.
-    """
-    user_id_int = int(message.from_user.id)
-    admin_id_int = int(ADMIN_ID)
-
-    if user_id_int != admin_id_int:
-        return
-
-    user_id = message.from_user.id
-    custom_activities = get_all_custom_activities(user_id)
-
-    debug_text = "🔧 Отладка кастомных активностей:\n\n"
-
-    for activity_type in ['work', 'study', 'sport', 'hobby', 'sleep', 'rest']:
-        custom = get_custom_activity(user_id, activity_type)
-        if custom and custom['custom_name'] and custom['emoji']:
-            debug_text += f"{activity_type}: {custom['custom_name']} {custom['emoji']}\n"
-        else:
-            debug_text += f"{activity_type}: нет кастомных настроек\n"
-
-    await message.answer(debug_text)
 
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
@@ -224,7 +216,7 @@ async def cmd_status(message: Message):
         f"• Пользователей для напоминаний: {len(users_for_reminders)}\n"
         f"• Напоминания: {'✅ Вкл' if reminder_manager.is_running else '❌ Выкл'}\n"
         f"• База данных: ✅ Работает\n"
-        f"• Версия: 3.0 (с часовыми поясами)\n"
+        f"• Версия: 4.3 (тестовые уведомления 5 секунд + упрощенные интервалы)\n"
         f"• Ваш ID: {user_id_int}\n"
         f"• ADMIN_ID: {admin_id_int}\n\n"
         f"📊 Статистика по часовым поясам:\n"
@@ -307,7 +299,7 @@ async def cmd_stats(message: Message):
 
 # Обработчики активностей
 activity_buttons = {
-    "💼 Работа": "work",
+    "💼 Труд": "work",
     "📚 Учёба": "study",
     "🏃 Спорт": "sport",
     "🎨 Хобби": "hobby",
@@ -317,7 +309,7 @@ activity_buttons = {
 
 for button_text, activity_type in activity_buttons.items():
     @dp.message(F.text == button_text)
-    async def handle_activity(message: Message, btn_text=button_text, act_type=activity_type):
+    async def handle_activity(message: Message, state: FSMContext, btn_text=button_text, act_type=activity_type):
         user_id = message.from_user.id
 
         # Проверяем, активна ли уже такая же активность
@@ -350,57 +342,237 @@ for button_text, activity_type in activity_buttons.items():
 
         # Новая активность
         display_text = get_display_activity(user_id, act_type)
-        response += f"{display_text} старт\n00:00:00"
+        response += f"{display_text} старт\n00:00:00\n\n"
 
-        await message.answer(response)
+        # Предлагаем выбрать интервал уведомлений (только 10, 30, 60 минут)
+        response += "📅 Выберите интервал уведомлений для этой активности:"
+
+        await message.answer(response, reply_markup=get_activity_reminder_keyboard())
+
+        # Сохраняем информацию о активности в состоянии
+        await state.update_data(activity_type=act_type)
+        await state.set_state(EditStates.waiting_for_activity_reminder)
+
 
 @dp.message(F.text == "📊 Статистика")
 async def handle_statistics(message: Message):
     """
-    Статистика.
+    Статистика по умолчанию (3 дня график + 24 часа распределение).
     """
     user_id = message.from_user.id
-    stats = get_daily_stats(user_id)
-    message_text = format_stats_message(stats, "📊 Статистика за день", user_id)
+
+    from database import get_hourly_activity_stats, get_total_stats_by_activity
+    from utils import generate_activity_graph, generate_bar_graph
+
+    # Получаем данные
+    hourly_stats = get_hourly_activity_stats(user_id, 3)  # График за 3 дня
+    activity_stats = get_total_stats_by_activity(user_id, 1)  # Распределение за 24 часа
+
+    # Генерируем графики
+    timeline_graph = generate_activity_graph(hourly_stats, 3)
+    bar_graph = generate_bar_graph(activity_stats, user_id, max_width=12)
+
+    # Форматируем сообщение
+    message_text = "📊 Статистика за последние 3 дня:\n\n"
+
+    if timeline_graph and timeline_graph.strip():
+        message_text += "График активности:\n"
+        message_text += timeline_graph
+        message_text += "\n\n"
+
+    message_text += "Распределение по активностям (за 24 часа):\n\n"
+
+    if bar_graph:
+        message_text += bar_graph
+    else:
+        message_text += "Нет данных об активностях\n"
 
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
-@dp.message(F.text.in_(["📅 День", "📆 Неделя", "📅 Месяц", "📊 Год"]))
-async def handle_statistics_period(message: Message):
+
+@dp.message(F.text == "📅 Неделя")
+async def handle_week_statistics(message: Message):
     """
-    Выбор периода статистики.
+    Статистика за неделю (7 дней график + 24 часа распределение).
     """
     user_id = message.from_user.id
-    period_map = {
-        "📅 День": ("📅 День", 1),
-        "📆 Неделя": ("📆 Неделя", 7),
-        "📅 Месяц": ("📅 Месяц", 30),
-        "📊 Год": ("📊 Год", 365)
-    }
 
-    period_name, days = period_map[message.text]
+    from database import get_hourly_activity_stats, get_total_stats_by_activity
+    from utils import generate_activity_graph, generate_bar_graph
 
-    if days == 1:
-        stats = get_daily_stats(user_id)
+    # Получаем данные за 7 дней
+    hourly_stats = get_hourly_activity_stats(user_id, 7)  # График за 7 дней
+    activity_stats = get_total_stats_by_activity(user_id, 1)  # Распределение за 24 часа
+
+    # Генерируем графики
+    timeline_graph = generate_activity_graph(hourly_stats, 7)
+    bar_graph = generate_bar_graph(activity_stats, user_id, max_width=12)
+
+    # Общее время за 24 часа
+    total_seconds = sum(duration for _, duration in activity_stats)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
+    message_text = "📅 Статистика за неделю:\n\n"
+
+    if timeline_graph and timeline_graph.strip():
+        message_text += "График активности (7 дней):\n"
+        # Для недели показываем только последние 3 дня графика
+        lines = timeline_graph.split('\n')
+        if len(lines) > 6:
+            message_text += '\n'.join(lines[:6]) + "\n..."
+        else:
+            message_text += timeline_graph
+        message_text += "\n\n"
+
+    message_text += f"📈 Всего времени за 24 часа: {hours:02d}:{minutes:02d}:{seconds:02d}\n\n"
+    message_text += "Распределение по активностям (за 24 часа):\n\n"
+
+    if bar_graph:
+        message_text += bar_graph
     else:
-        stats = get_period_stats(user_id, days)
+        message_text += "Нет данных об активностях"
 
-    message_text = format_stats_message(stats, period_name, user_id)
+    await message.answer(message_text, reply_markup=get_statistics_keyboard())
+
+
+@dp.message(F.text == "📅 Месяц")
+async def handle_month_statistics(message: Message):
+    """
+    Статистика за месяц (30 дней общая + 24 часа распределение).
+    """
+    user_id = message.from_user.id
+
+    from database import get_hourly_activity_stats, get_total_stats_by_activity
+    from utils import generate_activity_graph, generate_bar_graph
+
+    # Получаем данные за 30 дней для общей статистики
+    activity_stats_total = get_total_stats_by_activity(user_id, 30)  # Общая за 30 дней
+    activity_stats_24h = get_total_stats_by_activity(user_id, 1)  # Распределение за 24 часа
+
+    # Генерируем графики
+    bar_graph_24h = generate_bar_graph(activity_stats_24h, user_id, max_width=12)
+
+    # Общее время за 30 дней
+    total_seconds_30d = sum(duration for _, duration in activity_stats_total)
+    hours_30d = total_seconds_30d // 3600
+    minutes_30d = (total_seconds_30d % 3600) // 60
+    seconds_30d = total_seconds_30d % 60
+
+    # Общее время за 24 часа
+    total_seconds_24h = sum(duration for _, duration in activity_stats_24h)
+    hours_24h = total_seconds_24h // 3600
+    minutes_24h = (total_seconds_24h % 3600) // 60
+    seconds_24h = total_seconds_24h % 60
+
+    message_text = "📅 Статистика за месяц:\n\n"
+    message_text += f"📈 Всего времени за 30 дней: {hours_30d:02d}:{minutes_30d:02d}:{seconds_30d:02d}\n"
+    message_text += f"📈 Всего времени за 24 часа: {hours_24h:02d}:{minutes_24h:02d}:{seconds_24h:02d}\n\n"
+    message_text += "Распределение по активностям (за 24 часа):\n\n"
+
+    if bar_graph_24h:
+        message_text += bar_graph_24h
+    else:
+        message_text += "Нет данных об активностях"
+
+    await message.answer(message_text, reply_markup=get_statistics_keyboard())
+
+
+@dp.message(F.text == "📊 Год")
+async def handle_year_statistics(message: Message):
+    """
+    Статистика за год.
+    """
+    user_id = message.from_user.id
+
+    from database import get_total_stats_by_activity
+
+    # Для года показываем только общую статистику
+    activity_stats_total = get_total_stats_by_activity(user_id, 365)  # Общая за год
+    activity_stats_24h = get_total_stats_by_activity(user_id, 1)  # Распределение за 24 часа
+
+    # Общее время за год
+    total_seconds_year = sum(duration for _, duration in activity_stats_total)
+    hours_year = total_seconds_year // 3600
+    minutes_year = (total_seconds_year % 3600) // 60
+    seconds_year = total_seconds_year % 60
+
+    # Общее время за 24 часа
+    total_seconds_24h = sum(duration for _, duration in activity_stats_24h)
+    hours_24h = total_seconds_24h // 3600
+    minutes_24h = (total_seconds_24h % 3600) // 60
+    seconds_24h = total_seconds_24h % 60
+
+    message_text = "📊 Статистика за год:\n\n"
+    message_text += f"📈 Всего времени за год: {hours_year:02d}:{minutes_year:02d}:{seconds_year:02d}\n"
+    message_text += f"📈 Всего времени за 24 часа: {hours_24h:02d}:{minutes_24h:02d}:{seconds_24h:02d}\n\n"
+    message_text += "Топ активностей за 24 часа:\n\n"
+
+    # Показываем только топ-5 активности за 24 часа
+    top_activities = sorted(activity_stats_24h, key=lambda x: x[1], reverse=True)[:5]
+    for activity_type, duration in top_activities:
+        if duration == 0:
+            continue
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
+        seconds = duration % 60
+        message_text += f"{emoji} {activity_name}: {hours:02d}:{minutes:02d}:{seconds:02d}\n"
+
+    if not top_activities or all(duration == 0 for _, duration in top_activities):
+        message_text += "Нет данных об активностях"
+
+    await message.answer(message_text, reply_markup=get_statistics_keyboard())
+
+
+@dp.message(F.text == "📊 Год")
+async def handle_year_statistics(message: Message):
+    """
+    Статистика за год.
+    """
+    user_id = message.from_user.id
+
+    from database import get_total_stats_by_activity
+
+    # Для года показываем только общую статистику
+    activity_stats = get_total_stats_by_activity(user_id, 365)
+
+    # Общее время
+    total_seconds = sum(duration for _, duration in activity_stats)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
+    message_text = "📊 Статистика за год:\n\n"
+    message_text += f"📈 Всего времени: {hours:02d}:{minutes:02d}:{seconds:02d}\n\n"
+    message_text += "Топ активностей:\n\n"
+
+    # Показываем только топ-5 активности
+    top_activities = sorted(activity_stats, key=lambda x: x[1], reverse=True)[:5]
+    for activity_type, duration in top_activities:
+        if duration == 0:
+            continue
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
+        seconds = duration % 60
+        message_text += f"{emoji} {activity_name}: {hours:02d}:{minutes:02d}:{seconds:02d}\n"
+
+    if not top_activities or all(duration == 0 for _, duration in top_activities):
+        message_text += "Нет данных об активностях"
+
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
 @dp.message(F.text == "⚙️ Настройки")
 async def handle_settings(message: Message):
     """
-    Настройки.
+    Настройки - показываем все настройки сразу.
     """
     user_id = message.from_user.id
-    timezone_info = format_timezone_info(user_id)
-
-    settings_text = (
-        f"⚙️ Настройки\n\n"
-        f"{timezone_info}\n\n"
-        f"Выберите раздел для настройки:"
-    )
+    settings_text = format_all_settings(user_id)
 
     await message.answer(settings_text, reply_markup=get_settings_keyboard())
 
@@ -511,25 +683,6 @@ async def handle_quiet_time(message: Message):
         reply_markup=get_quiet_time_keyboard(quiet_enabled, start_time, end_time)
     )
 
-@dp.message(F.text == "✏️ Изменить")
-async def handle_edit_activities(message: Message):
-    """
-    Редактирование активностей.
-    """
-    user_id = message.from_user.id
-
-    message_text = "✏️ Изменить активности\n\n"
-    activity_types = ['work', 'study', 'sport', 'hobby', 'sleep', 'rest']
-
-    for activity_type in activity_types:
-        display_text = get_display_activity(user_id, activity_type)
-        message_text += f"{display_text}\n"
-
-    await message.answer(
-        message_text,
-        reply_markup=get_edit_activities_keyboard()  # ИСПРАВЛЕНО: было reply_mup, стало reply_markup
-    )
-
 @dp.message(F.text == "🗑️ Очистить")
 async def handle_clear_data(message: Message):
     """
@@ -547,11 +700,11 @@ async def handle_back(message: Message):
     """
     await message.answer("Главное меню", reply_markup=get_main_keyboard())
 
-# Обработчики инлайн-кнопок
+# Обработчики инлайн-кнопок для интервалов в настройках
 @dp.callback_query(F.data.startswith("interval_"))
 async def handle_interval_callback(callback: CallbackQuery):
     """
-    Выбор интервала.
+    Выбор интервала напоминаний в настройках (включая тестовые 5 секунд).
     """
     user_id = callback.from_user.id
     interval = int(callback.data.split("_")[1])
@@ -578,6 +731,75 @@ async def handle_interval_callback(callback: CallbackQuery):
 
     await callback.answer(f"Установлено: {format_interval(interval)}")
 
+# Обработчики инлайн-кнопок для напоминаний (быстрая смена интервала)
+@dp.callback_query(F.data.startswith("remind_"))
+async def handle_reminder_interval_callback(callback: CallbackQuery):
+    """
+    Выбор интервала напоминания в ответ на уведомление (только 10, 30, 60 минут).
+    """
+    user_id = callback.from_user.id
+    interval_str = callback.data.split("_")[1]
+
+    try:
+        interval_minutes = int(interval_str)
+        interval_seconds = interval_minutes * 60
+
+        # Обновляем настройки
+        update_user_setting(user_id, 'reminder_interval', interval_seconds)
+        update_user_setting(user_id, 'notifications_enabled', 1)
+
+        # Сбрасываем кэш времени напоминаний для этого пользователя
+        for key in list(reminder_manager.user_next_reminder_time.keys()):
+            if key.startswith(str(user_id)):
+                del reminder_manager.user_next_reminder_time[key]
+
+        await callback.message.edit_text(
+            f"✅ Уведомления установлены на каждые {interval_minutes} минут"
+        )
+        await callback.answer()
+
+    except Exception as e:
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+
+# Обработчики инлайн-кнопок для выбора интервала при смене активности
+@dp.callback_query(F.data.startswith("activity_remind_"))
+async def handle_activity_reminder_callback(callback: CallbackQuery, state: FSMContext):
+    """
+    Выбор интервала уведомлений при смене активности (только 10, 30, 60 минут).
+    """
+    user_id = callback.from_user.id
+    interval_str = callback.data.split("_")[2]  # activity_remind_10 -> 10
+
+    try:
+        interval_minutes = int(interval_str)
+        interval_seconds = interval_minutes * 60
+
+        # Обновляем настройки
+        update_user_setting(user_id, 'reminder_interval', interval_seconds)
+        update_user_setting(user_id, 'notifications_enabled', 1)
+
+        # Сбрасываем кэш времени напоминаний для этого пользователя
+        for key in list(reminder_manager.user_next_reminder_time.keys()):
+            if key.startswith(str(user_id)):
+                del reminder_manager.user_next_reminder_time[key]
+
+        # Получаем информацию о активности из состояния
+        data = await state.get_data()
+        activity_type = data.get('activity_type', 'work')
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        await callback.message.edit_text(
+            f"{emoji} {activity_name}\n00:00:00\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
+        )
+        await callback.answer(f"Интервал: {interval_minutes} мин")
+
+        # Очищаем состояние
+        await state.clear()
+
+    except Exception as e:
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+
 @dp.callback_query(F.data == "toggle_notif")
 async def handle_toggle_notif(callback: CallbackQuery):
     """
@@ -591,6 +813,12 @@ async def handle_toggle_notif(callback: CallbackQuery):
         new_state = not current_state
 
         update_user_setting(user_id, 'notifications_enabled', 1 if new_state else 0)
+
+        # Если выключаем уведомления, очищаем кэш
+        if not new_state:
+            for key in list(reminder_manager.user_next_reminder_time.keys()):
+                if key.startswith(str(user_id)):
+                    del reminder_manager.user_next_reminder_time[key]
 
         current_interval = settings['reminder_interval']
 
@@ -701,212 +929,15 @@ async def handle_quiet_end_input(message: Message, state: FSMContext):
     else:
         await message.answer("❌ Неверный формат времени. Используйте ЧЧ:ММ (например, 06:00)")
 
-@dp.callback_query(F.data == "edit_activities")
-async def handle_edit_activities_callback(callback: CallbackQuery):
-    """
-    Редактирование активностей.
-    """
-    user_id = callback.from_user.id
-
-    message_text = "✏️ Изменить активности\n\n"
-    activity_types = ['work', 'study', 'sport', 'hobby', 'sleep', 'rest']
-
-    for activity_type in activity_types:
-        display_text = get_display_activity(user_id, activity_type)
-        message_text += f"{display_text}\n"
-
-    await callback.message.edit_text(message_text)
-    await callback.message.edit_reply_markup(
-        reply_markup=get_edit_activities_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("edit_"))
-async def handle_edit_activity(callback: CallbackQuery):
-    """
-    Редактирование конкретной активности.
-    """
-    if callback.data.startswith("edit_work"):
-        activity_type = "work"
-    elif callback.data.startswith("edit_study"):
-        activity_type = "study"
-    elif callback.data.startswith("edit_sport"):
-        activity_type = "sport"
-    elif callback.data.startswith("edit_hobby"):
-        activity_type = "hobby"
-    elif callback.data.startswith("edit_sleep"):
-        activity_type = "sleep"
-    elif callback.data.startswith("edit_rest"):
-        activity_type = "rest"
-    else:
-        await callback.answer("Неизвестная активность")
-        return
-
-    user_id = callback.from_user.id
-    display_text = get_display_activity(user_id, activity_type)
-    default_name = ACTIVITIES.get(activity_type, activity_type)
-
-    await callback.message.edit_text(
-        f"✏️ Изменить:\n{display_text}\n\nПо умолчанию: {default_name}"
-    )
-    await callback.message.edit_reply_markup(
-        reply_markup=get_edit_activity_keyboard(activity_type)
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("edit_name_"))
-async def handle_edit_name(callback: CallbackQuery, state: FSMContext):
-    """
-    Изменение названия активности.
-    """
-    activity_type = callback.data.split("_")[2]
-    await state.update_data(activity_type=activity_type)
-
-    user_id = callback.from_user.id
-    current_name = get_custom_activity(user_id, activity_type)
-    if current_name and current_name['custom_name']:
-        current_text = f"\nТекущее название: {current_name['custom_name']}"
-    else:
-        current_text = ""
-
-    await callback.message.edit_text(
-        f"Введите новое название для активности:\n\nТип: {activity_type}{current_text}"
-    )
-    await state.set_state(EditStates.waiting_for_activity_name)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("edit_emoji_"))
-async def handle_edit_emoji(callback: CallbackQuery, state: FSMContext):
-    """
-    Изменение эмодзи активности.
-    """
-    activity_type = callback.data.split("_")[2]
-    await state.update_data(activity_type=activity_type)
-    await state.set_state(EditStates.waiting_for_emoji_selection)
-
-    user_id = callback.from_user.id
-    current_emoji = get_custom_activity(user_id, activity_type)
-    if current_emoji and current_emoji['emoji']:
-        current_text = f"\nТекущий эмодзи: {current_emoji['emoji']}"
-    else:
-        default_emoji = get_activity_emoji(activity_type)
-        current_text = f"\nТекущий эмодзи: {default_emoji}"
-
-    await callback.message.edit_text(
-        f"Выберите эмодзи для активности {activity_type}:{current_text}"
-    )
-    await callback.message.edit_reply_markup(
-        reply_markup=get_emoji_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(EditStates.waiting_for_emoji_selection, F.data.startswith("emoji_"))
-async def handle_emoji_selection(callback: CallbackQuery, state: FSMContext):
-    """
-    Выбор эмодзи для активности.
-    """
-    emoji = callback.data.split("_")[1]
-    data = await state.get_data()
-    activity_type = data.get('activity_type')
-    user_id = callback.from_user.id
-
-    if not activity_type:
-        await callback.answer("Ошибка: не найден тип активности")
-        return
-
-    # Получаем текущее название или используем стандартное
-    custom = get_custom_activity(user_id, activity_type)
-    if custom and custom['custom_name']:
-        current_name = custom['custom_name']
-    else:
-        current_name = ACTIVITIES.get(activity_type, activity_type)
-
-    update_custom_activity(user_id, activity_type, current_name, emoji)
-
-    display_text = get_display_activity(user_id, activity_type)
-    await callback.message.edit_text(
-        f"✅ Обновлено: {display_text}"
-    )
-    await callback.message.edit_reply_markup(
-        reply_markup=get_settings_keyboard()
-    )
-    await state.clear()
-    await callback.answer(f"Установлен эмодзи: {emoji}")
-
-@dp.callback_query(F.data == "back_emoji")
-async def handle_back_emoji(callback: CallbackQuery, state: FSMContext):
-    """
-    Назад от выбора эмодзи.
-    """
-    data = await state.get_data()
-    activity_type = data.get('activity_type')
-
-    if activity_type:
-        user_id = callback.from_user.id
-        display_text = get_display_activity(user_id, activity_type)
-        default_name = ACTIVITIES.get(activity_type, activity_type)
-
-        await callback.message.edit_text(
-            f"✏️ Изменить:\n{display_text}\n\nПо умолчанию: {default_name}"
-        )
-        await callback.message.edit_reply_markup(
-            reply_markup=get_edit_activity_keyboard(activity_type)
-        )
-
-    await state.clear()
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("delete_activity_"))
-async def handle_delete_activity(callback: CallbackQuery):
-    """
-    Удаление пользовательской активности.
-    """
-    activity_type = callback.data.split("_")[2]
-    user_id = callback.from_user.id
-
-    delete_custom_activity(user_id, activity_type)
-
-    display_text = get_display_activity(user_id, activity_type)
-    await callback.message.edit_text(
-        f"✅ Сброшено: {display_text}\n\nУстановлены значения по умолчанию."
-    )
-
-    # Возвращаем к списку активностей
-    message_text = "✏️ Изменить активности\n\n"
-    activity_types = ['work', 'study', 'sport', 'hobby', 'sleep', 'rest']
-
-    for act_type in activity_types:
-        display_text = get_display_activity(user_id, act_type)
-        message_text += f"{display_text}\n"
-
-    await callback.message.edit_text(message_text)
-    await callback.message.edit_reply_markup(
-        reply_markup=get_edit_activities_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "add_activity")
-async def handle_add_activity(callback: CallbackQuery):
-    """
-    Добавление новой активности.
-    """
-    await callback.answer("Функция в разработке", show_alert=True)
-
 @dp.callback_query(F.data == "back_settings")
 async def handle_back_settings(callback: CallbackQuery):
     """
     Назад в настройки.
     """
     user_id = callback.from_user.id
-    timezone_info = format_timezone_info(user_id)
+    settings_text = format_all_settings(user_id)
 
-    settings_text = (
-        f"⚙️ Настройки\n\n"
-        f"{timezone_info}\n\n"
-        f"Выберите раздел для настройки:"
-    )
-
-    await callback.message.delete()
+    await callback.message.edit_text(settings_text)
     await callback.answer()
 
 @dp.callback_query(F.data.in_(["clear_yes", "clear_no"]))
@@ -933,17 +964,13 @@ async def handle_other_messages(message: Message):
     if not message.text.startswith('/'):
         # Проверяем, не является ли это кнопкой из клавиатуры
         if message.text not in [
-            "💼 Работа", "📚 Учёба", "🏃 Спорт", "🎨 Хобби", "💤 Сон", "☕️ Отдых",
-            "📊 Статистика", "⚙️ Настройки", "📅 День", "📆 Неделя", "📅 Месяц", "📊 Год",
-            "⏰ Напоминания", "🌙 Тихий час", "✏️ Изменить", "🗑️ Очистить", "⬅️ Назад",
+            "💼 Труд", "📚 Учёба", "🏃 Спорт", "🎨 Хобби", "💤 Сон", "☕️ Отдых",
+            "📊 Статистика", "⚙️ Настройки", "📅 Неделя", "📅 Месяц", "📊 Год",
+            "⏰ Напоминания", "🌙 Тихий час", "🗑️ Очистить", "⬅️ Назад",
             "🌍 Часовой пояс", "🌍 Автоопределение", "🇷🇺 Москва (UTC+3)",
-            "🇷🇺 Калининград (UTC+2)", "🇷🇺 Самара (UTC+4)", "🇷🇺 Екатеринбург (UTC+5)",
-            "🇷🇺 Омск (UTC+6)", "🇷🇺 Красноярск (UTC+7)", "🇷🇺 Иркутск (UTC+8)",
-            "🇷🇺 Якутск (UTC+9)", "🇷🇺 Владивосток (UTC+10)", "🇷🇺 Магадан (UTC+11)",
-            "🇷🇺 Камчатка (UTC+12)", "🇺🇦 Киев (UTC+2)", "🇧🇾 Минск (UTC+3)",
-            "🇪🇺 Лондон (UTC+0)", "🇪🇺 Берлин (UTC+1)", "🇺🇸 Нью-Йорк (UTC-5)",
-            "🇺🇸 Лос-Анджелес (UTC-8)", "🇨🇳 Пекин (UTC+8)", "🇯🇵 Токио (UTC+9)",
-            "🌍 UTC (Гринвич)"
+            "🇷🇺 Екатеринбург (UTC+5)", "🇷🇺 Владивосток (UTC+10)",
+            "🇺🇦 Киев (UTC+2)", "🇧🇾 Минск (UTC+3)", "🇪🇺 Лондон (UTC+0)",
+            "🇺🇸 Нью-Йорк (UTC-5)"
         ]:
             await message.answer("Пожалуйста, используйте кнопки для взаимодействия с ботом.",
                                reply_markup=get_main_keyboard())
@@ -955,9 +982,9 @@ async def main():
     init_db()
 
     print("=" * 50)
-    print("🤖 Time Tracker Bot v3.0")
+    print("🤖 Time Tracker Bot v4.3.1")
     print("=" * 50)
-    print("✅ База данных инициализирована (с часовыми поясами)")
+    print("✅ База данных инициализирована")
     print("✅ Менеджер часовых поясов загружен")
     print("🚀 Запуск бота...")
 
@@ -967,15 +994,16 @@ async def main():
     await bot.delete_webhook(drop_pending_updates=True)
 
     print("✅ Бот готов к работе")
-    print("✅ Напоминания запущены (с учетом часовых поясов)")
-    print("⏰ Интервал по умолчанию: 30 минут")
-    print("🌙 Тихий час по умолчанию: 22:00 - 06:00")
-    print("🌍 Часовой пояс по умолчанию: Europe/Moscow")
+    print("✅ Напоминания запущены (поддержка тестовых интервалов 5 секунд)")
+    print("📊 Исправленная система статистики с графиками")
+    print("⚙️ Работают тестовые уведомления через 5 секунд")
+    print("⚙️ Упрощенные интервалы при смене активности (10, 30, 60 минут)")
     print("=" * 50)
     print("📱 Используйте /start для начала работы")
     print("ℹ️  Используйте /help для справки")
     print("🌍 Используйте /timezone для проверки часового пояса")
     print("🕒 Используйте /time для проверки локального времени")
+    print("🧪 Используйте /test5 для быстрого теста (5 секунд)")
     if ADMIN_ID:
         print(f"🛠️  Администратор: ID {ADMIN_ID}")
     print("=" * 50)
@@ -987,11 +1015,3 @@ async def main():
     finally:
         await reminder_manager.stop()
         print("\n🛑 Бот остановлен")
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен пользователем")
-    except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")

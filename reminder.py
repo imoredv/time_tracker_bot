@@ -1,9 +1,10 @@
 """
-Модуль для напоминаний с поддержкой часовых поясов.
+Модуль для напоминаний с поддержкой часовых поясов и привязкой к часам.
+Поддержка тестовых интервалов в 5 секунд.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from aiogram import Bot
 from database import (
@@ -11,17 +12,18 @@ from database import (
     update_last_reminder_time,
     get_current_activity,
     get_user_settings,
-    get_custom_activity,
     get_user_timezone
 )
 from config import ACTIVITIES
-from utils import get_activity_emoji, get_user_local_time
+from utils import get_activity_emoji
+from keyboards import get_reminder_buttons_keyboard
 
 class ReminderManager:
     def __init__(self, bot: Bot):
         self.bot = bot
         self.is_running = False
         self.task = None
+        self.user_next_reminder_time = {}  # Словарь для хранения времени следующего напоминания
 
     async def start(self):
         """Запуск менеджера напоминаний."""
@@ -30,7 +32,7 @@ class ReminderManager:
 
         self.is_running = True
         self.task = asyncio.create_task(self._reminder_loop())
-        print("✅ Напоминания запущены (с поддержкой часовых поясов)")
+        print("✅ Напоминания запущены (с поддержкой часовых поясов и привязкой к часам, включая тестовые 5 секунд)")
 
     async def stop(self):
         """Остановка менеджера напоминаний."""
@@ -46,46 +48,122 @@ class ReminderManager:
                 pass
         print("🛑 Напоминания остановлены")
 
+    def _calculate_next_reminder_time(self, user_local_time: datetime, interval_seconds: int) -> datetime:
+        """
+        Расчет времени следующего напоминания.
+        Для интервалов меньше 60 секунд - простая логика.
+        Для интервалов 60+ секунд - привязка к минутам/часам.
+        """
+        # Для тестовых интервалов (5 секунд) используем простую логику
+        if interval_seconds < 60:
+            return user_local_time + timedelta(seconds=interval_seconds)
+
+        # Для интервалов от минуты и больше - привязка к часам/минутам
+        interval_minutes = interval_seconds // 60
+
+        # Для интервалов меньше 30 минут - привязка к минутам
+        if interval_minutes <= 30:
+            current_minute = user_local_time.minute
+            minutes_to_next = interval_minutes - (current_minute % interval_minutes)
+
+            next_reminder = user_local_time.replace(
+                second=0,
+                microsecond=0
+            ) + timedelta(minutes=minutes_to_next)
+        else:
+            # Для больших интервалов - просто добавляем интервал
+            next_reminder = user_local_time + timedelta(seconds=interval_seconds)
+
+        return next_reminder
+
     async def _reminder_loop(self):
-        """Основной цикл напоминаний с учетом часовых поясов."""
+        """Основной цикл напоминаний с учетом часовых поясов и привязкой к часам/секундам."""
         while self.is_running:
             try:
                 users_to_remind = get_users_for_reminders()
 
-                if users_to_remind:
-                    print(f"📨 Проверка {len(users_to_remind)} пользователей для напоминаний")
-
                 for user_id, first_name, interval, user_timezone in users_to_remind:
                     try:
-                        # Проверяем локальное время пользователя
+                        # Получаем локальное время пользователя
                         try:
                             tz = pytz.timezone(user_timezone)
                             user_local_time = datetime.now(tz)
                         except:
                             user_local_time = datetime.now()
 
-                        # Проверяем, не в тихом ли времени пользователь
+                        # Проверяем тихое время
                         settings = get_user_settings(user_id)
                         if settings and settings['quiet_time_enabled']:
                             quiet_start = settings['quiet_time_start']
                             quiet_end = settings['quiet_time_end']
 
                             if self._is_in_quiet_time(user_local_time, quiet_start, quiet_end):
-                                continue  # Пропускаем напоминание в тихое время
+                                continue
 
-                        await self.send_reminder(user_id)
-                        await asyncio.sleep(0.3)
+                        # Проверяем, нужно ли отправлять напоминание
+                        cache_key = f"{user_id}_{interval}"
+
+                        if cache_key not in self.user_next_reminder_time:
+                            # Первое напоминание - рассчитываем время
+                            next_reminder = self._calculate_next_reminder_time(user_local_time, interval)
+                            self.user_next_reminder_time[cache_key] = next_reminder
+
+                            # Если текущее время уже близко к следующему напоминанию, отправляем сразу
+                            time_diff = (next_reminder - user_local_time).total_seconds()
+                            if time_diff < 1:  # Меньше секунды до следующего напоминания
+                                await self.send_reminder_with_buttons(user_id)
+                                # Для тестовых интервалов (5 секунд) используем простую логику
+                                if interval < 60:
+                                    self.user_next_reminder_time[cache_key] = user_local_time + timedelta(seconds=interval)
+                                else:
+                                    self.user_next_reminder_time[cache_key] = self._calculate_next_reminder_time(user_local_time, interval)
+                                update_last_reminder_time(user_id)
+                        else:
+                            next_reminder = self.user_next_reminder_time[cache_key]
+
+                            # Проверяем, настало ли время напоминания
+                            if user_local_time >= next_reminder:
+                                await self.send_reminder_with_buttons(user_id)
+                                # Обновляем время следующего напоминания
+                                if interval < 60:
+                                    # Для тестовых интервалов (5 секунд)
+                                    self.user_next_reminder_time[cache_key] = user_local_time + timedelta(seconds=interval)
+                                else:
+                                    # Для обычных интервалов
+                                    self.user_next_reminder_time[cache_key] = self._calculate_next_reminder_time(user_local_time, interval)
+                                update_last_reminder_time(user_id)
+
                     except Exception as e:
-                        print(f"Ошибка отправки {user_id}: {e}")
+                        print(f"Ошибка обработки пользователя {user_id}: {e}")
                         continue
 
-                await asyncio.sleep(5)
+                # Очищаем старые записи из кэша
+                self._clean_old_cache_entries()
+
+                # Для тестовых интервалов проверяем чаще (каждую секунду)
+                # Для обычных интервалов можно проверять реже
+                has_short_intervals = any(interval < 60 for _, _, interval, _ in users_to_remind)
+                sleep_time = 1 if has_short_intervals else 30
+                await asyncio.sleep(sleep_time)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 print(f"Ошибка в цикле напоминаний: {e}")
                 await asyncio.sleep(5)
+
+    def _clean_old_cache_entries(self):
+        """Очистка старых записей из кэша времени напоминаний."""
+        current_time = datetime.now()
+        keys_to_remove = []
+
+        for key, next_reminder_time in self.user_next_reminder_time.items():
+            # Если время напоминания прошло более чем сутки назад - удаляем
+            if (current_time - next_reminder_time).total_seconds() > 86400:
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            del self.user_next_reminder_time[key]
 
     def _is_in_quiet_time(self, local_time, quiet_start, quiet_end):
         """
@@ -117,9 +195,9 @@ class ReminderManager:
 
         return False
 
-    async def send_reminder(self, user_id: int):
+    async def send_reminder_with_buttons(self, user_id: int):
         """
-        Отправка напоминания с названием активности.
+        Отправка напоминания с кнопками выбора интервала.
         """
         try:
             current_activity = get_current_activity(user_id)
@@ -127,15 +205,8 @@ class ReminderManager:
             if current_activity:
                 # Получаем название активности
                 activity_type, start_time = current_activity
-
-                # Проверяем кастомное название
-                custom = get_custom_activity(user_id, activity_type)
-                if custom and custom['custom_name'] and custom['emoji']:
-                    activity_name = custom['custom_name']
-                    emoji = custom['emoji']
-                else:
-                    activity_name = ACTIVITIES.get(activity_type, activity_type)
-                    emoji = get_activity_emoji(activity_type)
+                activity_name = ACTIVITIES.get(activity_type, activity_type)
+                emoji = get_activity_emoji(activity_type)
 
                 # Рассчитываем время
                 start_time_dt = datetime.fromisoformat(start_time)
@@ -147,31 +218,37 @@ class ReminderManager:
                 seconds = duration % 60
 
                 if hours > 0:
-                    time_str = f"{hours} час {minutes} мин {seconds} сек"
+                    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                 elif minutes > 0:
-                    time_str = f"{minutes} мин {seconds} сек"
+                    time_str = f"{minutes:02d}:{seconds:02d}"
                 else:
-                    time_str = f"{seconds} сек"
+                    time_str = f"{seconds:02d} сек"
 
-                # Отправляем сообщение с названием активности
+                # Отправляем сообщение с кнопками
                 await self.bot.send_message(
                     chat_id=user_id,
-                    text=f"{emoji} {activity_name}?\n{time_str}"
+                    text=f"{emoji} {activity_name}?\n{time_str}\n\nУведомлять через:",
+                    reply_markup=get_reminder_buttons_keyboard()
                 )
             else:
-                # Если нет активности - просто вопрос
+                # Если нет активности
                 await self.bot.send_message(
                     chat_id=user_id,
-                    text="❓ Чем занят?"
+                    text="❓ Чем занят?\n\nУведомлять через:",
+                    reply_markup=get_reminder_buttons_keyboard()
                 )
-
-            update_last_reminder_time(user_id)
 
         except Exception as e:
             print(f"Ошибка отправки напоминания пользователю {user_id}: {e}")
+
+    async def send_reminder(self, user_id: int):
+        """
+        Простое напоминание (без кнопок) для обратной совместимости.
+        """
+        await self.send_reminder_with_buttons(user_id)
 
     async def send_test_reminder(self, user_id: int):
         """
         Тестовое напоминание.
         """
-        await self.send_reminder(user_id)
+        await self.send_reminder_with_buttons(user_id)

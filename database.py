@@ -59,16 +59,6 @@ def init_db():
         )
     ''')
 
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS custom_activities (
-            user_id INTEGER,
-            activity_type TEXT,
-            custom_name TEXT,
-            emoji TEXT,
-            PRIMARY KEY (user_id, activity_type)
-        )
-    ''')
-
     conn.commit()
     conn.close()
     print(f"✅ База данных инициализирована: {db_path}")
@@ -232,6 +222,71 @@ def start_activity(user_id, activity_type):
 
     return completed_activity
 
+def get_stats_last_24_hours(user_id):
+    """
+    Статистика за последние 24 часа с учетом текущей активности.
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Время 24 часа назад от текущего момента
+    time_24_hours_ago = datetime.now() - timedelta(hours=24)
+
+    cursor.execute('''
+        SELECT activity_type, SUM(duration_seconds)
+        FROM activities 
+        WHERE user_id = ? 
+          AND start_time >= ?
+          AND duration_seconds IS NOT NULL
+        GROUP BY activity_type
+    ''', (user_id, time_24_hours_ago.isoformat()))
+
+    completed_stats = cursor.fetchall()
+
+    # Добавляем текущую активность, если она есть и началась в последние 24 часа
+    current_activity = get_current_activity(user_id)
+    if current_activity:
+        activity_type, start_time_str = current_activity
+        start_time = datetime.fromisoformat(start_time_str)
+
+        # Проверяем, началась ли текущая активность в последние 24 часа
+        if start_time >= time_24_hours_ago:
+            current_time = datetime.now()
+            current_duration = int((current_time - start_time).total_seconds())
+
+            # Ищем текущую активность в завершенных
+            found = False
+            completed_stats_list = list(completed_stats)
+            for i, (act_type, duration) in enumerate(completed_stats_list):
+                if act_type == activity_type:
+                    completed_stats_list[i] = (act_type, duration + current_duration)
+                    found = True
+                    break
+
+            if not found:
+                completed_stats_list.append((activity_type, current_duration))
+
+            completed_stats = completed_stats_list
+
+    # Преобразуем в словарь для удобства
+    stats_dict = {}
+    for activity_type, duration in completed_stats:
+        stats_dict[activity_type] = duration
+
+    # Добавляем все активности, даже с нулевым временем
+    from config import ACTIVITIES
+    result = []
+    for activity_type in ACTIVITIES.keys():
+        duration = stats_dict.get(activity_type, 0)
+        result.append((activity_type, duration))
+
+    # Сортируем по убыванию времени
+    result.sort(key=lambda x: x[1], reverse=True)
+
+    conn.close()
+    return result
+
 def get_daily_stats(user_id, date=None):
     """
     Статистика за день с учетом текущей активности.
@@ -299,7 +354,7 @@ def get_period_stats(user_id, period_days):
         SELECT activity_type, SUM(duration_seconds)
         FROM activities 
         WHERE user_id = ? 
-          AND date(start_time) >= date(?)
+          AND date(start_time) >= date(?) 
           AND duration_seconds IS NOT NULL
         GROUP BY activity_type
     ''', (user_id, start_date.isoformat()))
@@ -338,14 +393,145 @@ def get_period_stats(user_id, period_days):
 
     return [(activity_type, duration) for activity_type, duration in stats_dict.items()]
 
-def format_duration_simple(seconds):
+def get_hourly_activity_stats(user_id, days=1):
     """
-    Простое форматирование длительности в формат ЧЧ:ММ:СС.
+    Получение статистики активности по 30-минутным интервалам за указанное количество дней.
+    Возвращает список из 48 элементов (24 часа * 2 интервала) для каждого дня.
     """
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    seconds = seconds % 60
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days-1)
+
+    # Получаем все активности за период
+    cursor.execute('''
+        SELECT activity_type, start_time, 
+               COALESCE(duration_seconds, 
+                       strftime('%s', 'now') - strftime('%s', start_time)) as duration
+        FROM activities 
+        WHERE user_id = ? 
+          AND date(start_time) BETWEEN date(?) AND date(?)
+    ''', (user_id, start_date.isoformat(), end_date.isoformat()))
+
+    activities = cursor.fetchall()
+    conn.close()
+
+    # Создаем структуру для хранения статистики
+    days_stats = []
+
+    for day_offset in range(days):
+        current_date = start_date + timedelta(days=day_offset)
+
+        # 48 интервалов по 30 минут (00:00-00:30, 00:30-01:00, ... 23:30-00:00)
+        hourly_stats = [None] * 48
+
+        for activity_type, start_time_str, duration in activities:
+            start_time = datetime.fromisoformat(start_time_str)
+
+            # Проверяем, относится ли активность к текущему дню
+            if start_time.date() != current_date:
+                continue
+
+            # Рассчитываем время окончания активности
+            end_time = start_time + timedelta(seconds=duration)
+
+            # Разбиваем активность на 30-минутные интервалы
+            interval_start = start_time
+            remaining_seconds = duration
+
+            while remaining_seconds > 0:
+                # Определяем начало текущего 30-минутного интервала
+                interval_num = (interval_start.hour * 2) + (interval_start.minute // 30)
+
+                # Определяем конец текущего интервала
+                interval_end_time = interval_start.replace(
+                    minute=(interval_start.minute // 30) * 30,
+                    second=0,
+                    microsecond=0
+                ) + timedelta(minutes=30)
+
+                # Сколько секунд активности попадает в этот интервал
+                seconds_in_interval = min(
+                    remaining_seconds,
+                    (interval_end_time - interval_start).total_seconds()
+                )
+
+                # Если в этом интервале еще нет активности или эта активность дольше
+                if hourly_stats[interval_num] is None or seconds_in_interval > hourly_stats[interval_num][1]:
+                    hourly_stats[interval_num] = (activity_type, seconds_in_interval)
+
+                # Переходим к следующему интервалу
+                interval_start = interval_end_time
+                remaining_seconds -= seconds_in_interval
+
+        # Заменяем None на 'rest' (отдых) для интервалов без активности
+        for i in range(48):
+            if hourly_stats[i] is None:
+                hourly_stats[i] = ('rest', 0)
+
+        days_stats.append(hourly_stats)
+
+    return days_stats
+
+def get_total_stats_by_activity(user_id, days=1):
+    """
+    Получение общей статистики по активностям за указанное количество дней.
+    Для days=1 использует последние 24 часа.
+    """
+    # Если запрашиваем 1 день, используем статистику за 24 часа
+    if days == 1:
+        return get_stats_last_24_hours(user_id)
+
+    # Остальной код функции для days > 1
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days-1)
+
+    # Статистика по завершенным активностям
+    cursor.execute('''
+        SELECT activity_type, SUM(duration_seconds)
+        FROM activities 
+        WHERE user_id = ? 
+          AND date(start_time) BETWEEN date(?) AND date(?)
+          AND duration_seconds IS NOT NULL
+        GROUP BY activity_type
+    ''', (user_id, start_date.isoformat(), end_date.isoformat()))
+
+    completed_stats = dict(cursor.fetchall())
+
+    # Добавляем текущую активность, если она есть
+    current_activity = get_current_activity(user_id)
+    if current_activity:
+        activity_type, start_time_str = current_activity
+        start_time = datetime.fromisoformat(start_time_str)
+
+        # Проверяем, попадает ли текущая активность в период
+        if start_date <= start_time.date() <= end_date:
+            current_time = datetime.now()
+            current_duration = int((current_time - start_time).total_seconds())
+
+            if activity_type in completed_stats:
+                completed_stats[activity_type] += current_duration
+            else:
+                completed_stats[activity_type] = current_duration
+
+    # Добавляем все активности, даже с нулевым временем
+    from config import ACTIVITIES
+    result = []
+    for activity_type in ACTIVITIES.keys():
+        duration = completed_stats.get(activity_type, 0)
+        result.append((activity_type, duration))
+
+    # Сортируем по убыванию времени
+    result.sort(key=lambda x: x[1], reverse=True)
+
+    conn.close()
+    return result
 
 def update_user_setting(user_id, setting_name, value):
     """
@@ -433,7 +619,6 @@ def clear_user_data(user_id):
     cursor = conn.cursor()
 
     cursor.execute('DELETE FROM activities WHERE user_id = ?', (user_id,))
-    cursor.execute('DELETE FROM custom_activities WHERE user_id = ?', (user_id,))
     cursor.execute('''
         UPDATE user_settings 
         SET reminder_interval = 1800, 
@@ -447,90 +632,10 @@ def clear_user_data(user_id):
     conn.commit()
     conn.close()
 
-def update_custom_activity(user_id, activity_type, custom_name, emoji):
-    """
-    Обновление пользовательского названия активности.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        INSERT OR REPLACE INTO custom_activities (user_id, activity_type, custom_name, emoji)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, activity_type, custom_name, emoji))
-
-    conn.commit()
-    conn.close()
-
-def get_custom_activity(user_id, activity_type):
-    """
-    Получение пользовательского названия активности.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT custom_name, emoji
-        FROM custom_activities
-        WHERE user_id = ? AND activity_type = ?
-    ''', (user_id, activity_type))
-
-    result = cursor.fetchone()
-    conn.close()
-
-    if result:
-        return {
-            'custom_name': result[0],
-            'emoji': result[1]
-        }
-    return None
-
-def get_all_custom_activities(user_id):
-    """
-    Получение всех пользовательских активностей.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT activity_type, custom_name, emoji
-        FROM custom_activities
-        WHERE user_id = ?
-    ''', (user_id,))
-
-    results = cursor.fetchall()
-    conn.close()
-
-    activities = {}
-    for activity_type, custom_name, emoji in results:
-        activities[activity_type] = {
-            'custom_name': custom_name,
-            'emoji': emoji
-        }
-    return activities
-
-def delete_custom_activity(user_id, activity_type):
-    """
-    Удаление пользовательской активности.
-    """
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        DELETE FROM custom_activities
-        WHERE user_id = ? AND activity_type = ?
-    ''', (user_id, activity_type))
-
-    conn.commit()
-    conn.close()
-
 def get_users_for_reminders():
     """
     Пользователи для напоминаний с учетом тихого времени и часовых поясов.
+    Поддержка тестовых интервалов (5 секунд).
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -539,6 +644,7 @@ def get_users_for_reminders():
     current_time = datetime.now()
     current_hour = current_time.hour
     current_minute = current_time.minute
+    current_second = current_time.second
 
     cursor.execute('''
         SELECT u.user_id, u.first_name, u.timezone,
@@ -565,7 +671,9 @@ def get_users_for_reminders():
         quiet_end = user[6]
         last_reminder = user[7]
 
-        if quiet_time_enabled:
+        # Для тестовых интервалов (5 секунд) пропускаем проверку тихого времени
+        # чтобы можно было тестировать в любое время
+        if quiet_time_enabled and reminder_interval >= 60:  # Только для интервалов >= 1 минуты
             def time_to_minutes(time_str):
                 try:
                     h, m = map(int, time_str.split(':'))
@@ -580,9 +688,11 @@ def get_users_for_reminders():
             in_quiet_time = False
 
             if start_minutes > end_minutes:
+                # Ночное время (например, 22:00-06:00)
                 if current_minutes >= start_minutes or current_minutes < end_minutes:
                     in_quiet_time = True
             else:
+                # Дневное время
                 if start_minutes <= current_minutes < end_minutes:
                     in_quiet_time = True
 
@@ -721,3 +831,11 @@ def debug_user_settings(user_id):
         • Конец: {settings[4]}
         """
     return f"❌ Настройки пользователя {user_id} не найдены"
+
+def get_daily_stats_sorted(user_id, date=None):
+    """
+    Статистика за день с учетом текущей активности, отсортированная по убыванию времени.
+    """
+    stats = get_daily_stats(user_id, date)
+    # Сортируем по убыванию времени
+    return sorted(stats, key=lambda x: x[1], reverse=True)
