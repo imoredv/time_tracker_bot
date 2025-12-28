@@ -411,6 +411,7 @@ async def handle_statistics(message: Message):
 
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
+
 @dp.message(F.text == "📅 Неделя")
 async def handle_week_statistics(message: Message):
     """
@@ -418,15 +419,17 @@ async def handle_week_statistics(message: Message):
     """
     user_id = message.from_user.id
 
-    from database import get_hourly_activity_stats, get_total_stats_by_activity
-    from utils import generate_activity_graph, generate_bar_graph_period
+    from database import get_hourly_activity_stats, get_total_stats_by_activity, get_current_activity
+    from utils import generate_activity_graph_with_dates, generate_bar_graph_period, format_duration_simple, \
+        get_activity_emoji
 
     # Получаем данные за 7 дней
     hourly_stats = get_hourly_activity_stats(user_id, 7)  # График за 7 дней
     activity_stats = get_total_stats_by_activity(user_id, 7)  # Распределение за 7 дней
+    current = get_current_activity(user_id)  # Текущая активность
 
     # Генерируем графики
-    timeline_graph = generate_activity_graph(hourly_stats, 7)
+    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 7)
     bar_graph = generate_bar_graph_period(activity_stats, user_id)
 
     # Суммарное время за неделю
@@ -437,19 +440,33 @@ async def handle_week_statistics(message: Message):
 
     message_text = "📅 Статистика за неделю:\n\n"
 
+    # Добавляем текущую активность
+    if current:
+        activity_type, start_time = current
+        start_time_dt = datetime.fromisoformat(start_time)
+        current_duration = int((datetime.now() - start_time_dt).total_seconds())
+
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
+    else:
+        message_text += "Текущая: Нет активной задачи\n\n"
+
     if timeline_graph and timeline_graph.strip():
         message_text += timeline_graph
         message_text += "\n\n"
 
-    message_text += "Распределение по активностям (за неделю):\n\n"
+    message_text += "Рейтинг:\n\n"
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Всего времени за неделю: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        message_text += f"\n\n📈 Показано за неделю: {hours:02d}:{minutes:02d}:{seconds:02d}"
     else:
-        message_text += "Нет данных об активностях"
+        message_text += "Нет данных об активностях\n"
 
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
+
 
 @dp.message(F.text == "📅 Месяц")
 async def handle_month_statistics(message: Message):
@@ -458,15 +475,17 @@ async def handle_month_statistics(message: Message):
     """
     user_id = message.from_user.id
 
-    from database import get_hourly_activity_stats, get_total_stats_by_activity
-    from utils import generate_activity_graph, generate_bar_graph_period
+    from database import get_hourly_activity_stats, get_total_stats_by_activity, get_current_activity
+    from utils import generate_activity_graph_with_dates, generate_bar_graph_period, format_duration_simple, \
+        get_activity_emoji
 
     # Получаем данные за 30 дней
     hourly_stats = get_hourly_activity_stats(user_id, 30)  # График за 30 дней
     activity_stats = get_total_stats_by_activity(user_id, 30)  # Распределение за 30 дней
+    current = get_current_activity(user_id)  # Текущая активность
 
     # Генерируем графики
-    timeline_graph = generate_activity_graph(hourly_stats, 30)
+    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 30)
     bar_graph = generate_bar_graph_period(activity_stats, user_id)
 
     # Суммарное время за месяц
@@ -477,23 +496,36 @@ async def handle_month_statistics(message: Message):
 
     message_text = "📅 Статистика за месяц:\n\n"
 
+    # Добавляем текущую активность
+    if current:
+        activity_type, start_time = current
+        start_time_dt = datetime.fromisoformat(start_time)
+        current_duration = int((datetime.now() - start_time_dt).total_seconds())
+
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
+    else:
+        message_text += "Текущая: Нет активной задачи\n\n"
+
     if timeline_graph and timeline_graph.strip():
-        message_text += "График активности (30 дней):\n"
-        # Для месяца показываем только последние 10 дней графика (каждый день = 3 строки)
+        message_text += "График активности:\n"
+        # Для месяца показываем только последние 10 дней графика
         lines = timeline_graph.split('\n')
-        if len(lines) > 30:  # 10 дней * 3 строки (число + 2 строки графика)
+        if len(lines) > 30:  # 10 дней * 3 строки (дата + 2 строки графика)
             message_text += '\n'.join(lines[:30]) + "\n..."
         else:
             message_text += timeline_graph
         message_text += "\n\n"
 
-    message_text += "Распределение по активностям (за месяц):\n\n"
+    message_text += "Рейтинг:\n\n"
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Всего времени за месяц: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        message_text += f"\n\n📈 Показано за месяц: {hours:02d}:{minutes:02d}:{seconds:02d}"
     else:
-        message_text += "Нет данных об активностях"
+        message_text += "Нет данных об активностях\n"
 
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
@@ -505,15 +537,17 @@ async def handle_year_statistics(message: Message):
     """
     user_id = message.from_user.id
 
-    from database import get_hourly_activity_stats, get_total_stats_by_activity
-    from utils import generate_activity_graph, generate_bar_graph_period
+    from database import get_hourly_activity_stats, get_total_stats_by_activity, get_current_activity
+    from utils import generate_activity_graph_with_dates, generate_bar_graph_period, format_duration_simple, \
+        get_activity_emoji
 
     # Для года показываем график за 30 дней + статистику за год
     hourly_stats = get_hourly_activity_stats(user_id, 30)  # График за 30 дней
     activity_stats = get_total_stats_by_activity(user_id, 365)  # Распределение за год
+    current = get_current_activity(user_id)  # Текущая активность
 
     # Генерируем графики
-    timeline_graph = generate_activity_graph(hourly_stats, 30)
+    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 30)
     bar_graph = generate_bar_graph_period(activity_stats, user_id)
 
     # Суммарное время за год
@@ -524,8 +558,21 @@ async def handle_year_statistics(message: Message):
 
     message_text = "📊 Статистика за год:\n\n"
 
+    # Добавляем текущую активность
+    if current:
+        activity_type, start_time = current
+        start_time_dt = datetime.fromisoformat(start_time)
+        current_duration = int((datetime.now() - start_time_dt).total_seconds())
+
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
+    else:
+        message_text += "Текущая: Нет активной задачи\n\n"
+
     if timeline_graph and timeline_graph.strip():
-        message_text += "График активности (30 дней):\n"
+        message_text += "График активности:\n"
         # Для года показываем только последние 15 дней графика
         lines = timeline_graph.split('\n')
         if len(lines) > 45:  # 15 дней * 3 строки
@@ -534,13 +581,13 @@ async def handle_year_statistics(message: Message):
             message_text += timeline_graph
         message_text += "\n\n"
 
-    message_text += "Распределение по активностям (за год):\n\n"
+    message_text += "Рейтинг:\n\n"
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Всего времени за год: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        message_text += f"\n\n📈 Показано за год: {hours:02d}:{minutes:02d}:{seconds:02d}"
     else:
-        message_text += "Нет данных об активностях"
+        message_text += "Нет данных об активностях\n"
 
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
