@@ -108,6 +108,8 @@ def generate_activity_graph(stats_by_hour, days=1):
     Первая строка: 00:00-12:00
     Вторая строка: 12:00-24:00
 
+    Добавлены даты перед каждым днем (только число месяца).
+
     stats_by_hour: список из days элементов, каждый элемент - список из 48 кортежей
                    (activity_type, seconds) для каждого 30-минутного интервала
     days: количество дней
@@ -132,7 +134,13 @@ def generate_activity_graph(stats_by_hour, days=1):
     if not has_activity:
         return ""
 
-    for day_stats in stats_by_hour:
+    # Получаем текущую дату для расчета дат дней
+    current_date = datetime.now().date()
+
+    for day_idx, day_stats in enumerate(stats_by_hour):
+        # Рассчитываем дату для этого дня (дни идут в обратном порядке)
+        day_date = current_date - timedelta(days=days - 1 - day_idx)
+
         # Проверяем, есть ли активность в этом дне
         day_has_activity = False
         for activity_type, seconds in day_stats:
@@ -142,6 +150,9 @@ def generate_activity_graph(stats_by_hour, days=1):
 
         if not day_has_activity:
             continue
+
+        # Добавляем только число месяца
+        graph_lines.append(f"{day_date.day}")
 
         # Создаем график
         # Первая строка: интервалы 0-23 (00:00-12:00)
