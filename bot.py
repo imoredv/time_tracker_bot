@@ -362,7 +362,7 @@ async def handle_statistics(message: Message):
     user_id = message.from_user.id
 
     from database import get_hourly_activity_stats, get_total_stats_by_activity, get_current_activity
-    from utils import generate_activity_graph, generate_bar_graph, format_duration_simple, get_activity_emoji
+    from utils import generate_activity_graph_with_dates, generate_bar_graph, format_duration_simple, get_activity_emoji
 
     # Получаем данные за 2 дня для графика
     hourly_stats = get_hourly_activity_stats(user_id, 2)  # График за 2 дня
@@ -373,7 +373,7 @@ async def handle_statistics(message: Message):
     current = get_current_activity(user_id)
 
     # Генерируем графики
-    timeline_graph = generate_activity_graph(hourly_stats, 2)
+    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 2)
     bar_graph = generate_bar_graph(activity_stats_24h, user_id, max_width=12)
 
     # Общее время за последние 24 часа
@@ -382,7 +382,7 @@ async def handle_statistics(message: Message):
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
 
-    message_text = "📊 Статистика за последние 24 часа:\n"
+    message_text = "📊 Статистика за последние 24 часа:\n\n"
 
     # Добавляем текущую активность
     if current:
@@ -395,19 +395,17 @@ async def handle_statistics(message: Message):
 
         message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
     else:
-        message_text += "\n"
-
-    message_text += "Даты:\n\n"
+        message_text += "Текущая: Нет активной задачи\n\n"
 
     if timeline_graph and timeline_graph.strip():
         message_text += timeline_graph
         message_text += "\n\n"
 
-    message_text += "Распределение:\n\n"
+    message_text += "Рейтинг:\n\n"
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Всего за 24 часа: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        message_text += f"\n\n📈 Показано за 24 часа: {hours:02d}:{minutes:02d}:{seconds:02d}"
     else:
         message_text += "Нет данных об активностях\n"
 
