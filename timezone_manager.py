@@ -280,5 +280,5 @@ class TimezoneManager:
         return grouped
 
 
-# Создаем глобальный экземпляр менеджера
+# Создаем глобальный экземпляр менеджера.
 timezone_manager = TimezoneManager()
