@@ -407,3 +407,73 @@ def format_all_settings(user_id):
 🌍 Часовой пояс: {timezone_display}
 🕒 Локальное время: {format_user_local_time(user_id)}
 """
+
+
+def generate_bar_graph_period(activity_stats, user_id=None):
+    """
+    Генерация столбчатой диаграммы для статистики по активностям за период (неделя/месяц/год).
+    12 символов ████████████ - максимум (топ активность).
+
+    activity_stats: список кортежей (activity_type, seconds)
+    user_id: ID пользователя для определения текущей активности
+
+    Возвращает строку с диаграммой.
+    """
+    if not activity_stats:
+        return ""
+
+    # Получаем текущую активность
+    current_activity = None
+    if user_id:
+        current = get_current_activity(user_id)
+        if current:
+            current_activity = current[0]
+
+    # Фильтруем активности с нулевым временем и сортируем по убыванию
+    filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration > 0]
+    if not filtered_stats:
+        return ""
+
+    sorted_stats = sorted(filtered_stats, key=lambda x: x[1], reverse=True)
+
+    bars = []
+
+    # Находим максимальное время (для топ активности)
+    max_duration = sorted_stats[0][1] if sorted_stats else 1
+
+    for activity_type, seconds in sorted_stats:
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        # Рассчитываем ширину столбца (12 символов максимум)
+        # Пропорция: (время активности / максимальное время) * 12
+        width_fraction = seconds / max_duration
+        width = int(width_fraction * 12)
+
+        # Если ширина 0, но есть время (маленькое значение) - показываем хотя бы 1 символ
+        if width == 0 and seconds > 0:
+            # Для очень маленьких значений показываем половинку символа или 1 символ
+            if width_fraction >= 0.04:  # Если хотя бы 4% от одного символа
+                width = 1
+            else:
+                width = 0
+
+        # Форматируем ширину
+        if width == 0:
+            # Для очень маленьких значений - половинка символа
+            bar = "▌"
+        else:
+            bar = "█" * width
+
+        # Форматируем время в ЧЧ:ММ:СС
+        total_hours = seconds // 3600
+        total_minutes = (seconds % 3600) // 60
+        total_seconds = seconds % 60
+
+        # Добавляем зеленый кружок для текущей активности
+        if activity_type == current_activity:
+            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} 🟢")
+        else:
+            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d}")
+
+    return "\n".join(bars)
