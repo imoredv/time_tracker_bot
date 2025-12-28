@@ -357,29 +357,29 @@ for button_text, activity_type in activity_buttons.items():
 @dp.message(F.text == "📊 Статистика")
 async def handle_statistics(message: Message):
     """
-    Статистика по умолчанию (1 день график + 24 часа распределение).
+    Статистика за последние 24 часа (2 дня графика + 24 часа распределение).
     """
     user_id = message.from_user.id
 
     from database import get_hourly_activity_stats, get_total_stats_by_activity
     from utils import generate_activity_graph, generate_bar_graph
 
-    # Получаем данные
-    hourly_stats = get_hourly_activity_stats(user_id, 1)  # График за 1 день
+    # Получаем данные за 2 дня для графика
+    hourly_stats = get_hourly_activity_stats(user_id, 2)  # График за 2 дня
+    # Получаем статистику именно за последние 24 часа
     activity_stats_24h = get_total_stats_by_activity(user_id, 1)  # Распределение за 24 часа
-    activity_stats_total = get_total_stats_by_activity(user_id, 1)  # Для общего времени за сутки
 
     # Генерируем графики
-    timeline_graph = generate_activity_graph(hourly_stats, 1)
+    timeline_graph = generate_activity_graph(hourly_stats, 2)
     bar_graph = generate_bar_graph(activity_stats_24h, user_id, max_width=12)
 
-    # Общее время за сутки
-    total_seconds = sum(duration for _, duration in activity_stats_total)
+    # Общее время за последние 24 часа
+    total_seconds = sum(duration for _, duration in activity_stats_24h)
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
 
-    message_text = "📊 Статистика за последние сутки:\n\n"
+    message_text = "📊 Статистика за последние 24 часа:\n\n"
 
     if timeline_graph and timeline_graph.strip():
         message_text += timeline_graph
@@ -389,11 +389,9 @@ async def handle_statistics(message: Message):
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Всего за сутки: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        message_text += f"\n\n📈 Всего за 24 часа: {hours:02d}:{minutes:02d}:{seconds:02d}"
     else:
         message_text += "Нет данных об активностях\n"
-
-    await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
     await message.answer(message_text, reply_markup=get_statistics_keyboard())
 
