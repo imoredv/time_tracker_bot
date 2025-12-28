@@ -1,5 +1,5 @@
 """
-Вспомогательные функции с поддержкой часовых поясов .
+Вспомогательные функции с поддержкой часовых поясов.
 """
 
 import pytz
@@ -187,6 +187,91 @@ def generate_activity_graph(stats_by_hour, days=1):
     return "\n".join(graph_lines)
 
 
+def generate_activity_graph_with_dates(stats_by_hour, days=1):
+    """
+    Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
+    Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
+    Первая строка: 00:00-12:00
+    Вторая строка: 12:00-24:00
+
+    stats_by_hour: список из days элементов, каждый элемент - список из 48 кортежей
+                   (activity_type, seconds) для каждого 30-минутного интервала
+    days: количество дней
+
+    Возвращает строку с графиком.
+    """
+    if not stats_by_hour or days <= 0:
+        return ""
+
+    graph_lines = []
+
+    # Проверяем, есть ли вообще активность за период
+    has_activity = False
+    for day_stats in stats_by_hour:
+        for activity_type, seconds in day_stats:
+            if seconds > 0 and activity_type != 'rest':
+                has_activity = True
+                break
+        if has_activity:
+            break
+
+    if not has_activity:
+        return ""
+
+    # Получаем текущую дату для расчета дат дней
+    current_date = datetime.now().date()
+
+    for day_idx, day_stats in enumerate(stats_by_hour):
+        # Рассчитываем дату для этого дня (дни идут в обратном порядке)
+        day_date = current_date - timedelta(days=days - 1 - day_idx)
+
+        # Проверяем, есть ли активность в этом дне
+        day_has_activity = False
+        for activity_type, seconds in day_stats:
+            if seconds > 0 and activity_type != 'rest':
+                day_has_activity = True
+                break
+
+        if not day_has_activity:
+            continue
+
+        # Форматируем дату в формате ДД.ММ.ГГГГ
+        date_str = day_date.strftime("%d.%m.%Y")
+        graph_lines.append(date_str)
+
+        # Создаем график
+        # Первая строка: интервалы 0-23 (00:00-12:00)
+        line1 = ""
+        for i in range(24):  # Интервалы 0-23
+            activity_type, seconds = day_stats[i]
+            if seconds > 0:
+                if activity_type == 'sleep':
+                    line1 += '▁'  # Сон
+                else:
+                    symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
+                    line1 += symbol
+            else:
+                line1 += '▁'  # Отдых или нет активности
+
+        # Вторая строка: интервалы 24-47 (12:00-24:00)
+        line2 = ""
+        for i in range(24, 48):  # Интервалы 24-47
+            activity_type, seconds = day_stats[i]
+            if seconds > 0:
+                if activity_type == 'sleep':
+                    line2 += '▁'  # Сон
+                else:
+                    symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
+                    line2 += symbol
+            else:
+                line2 += '▁'  # Отдых или нет активности
+
+        graph_lines.append(line1)
+        graph_lines.append(line2)
+
+    return "\n".join(graph_lines)
+
+
 def generate_bar_graph(activity_stats, user_id=None, max_width=12):
     """
     Генерация столбчатой диаграммы для статистики по активностям.
@@ -253,6 +338,75 @@ def generate_bar_graph(activity_stats, user_id=None, max_width=12):
         total_seconds = seconds % 60
 
         # Добавляем зеленый кружок для текущей активности вместо "(Текущая)"
+        if activity_type == current_activity:
+            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} 🟢")
+        else:
+            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d}")
+
+    return "\n".join(bars)
+
+def generate_bar_graph_period(activity_stats, user_id=None):
+    """
+    Генерация столбчатой диаграммы для статистики по активностям за период (неделя/месяц/год).
+    12 символов ████████████ - максимум (топ активность).
+
+    activity_stats: список кортежей (activity_type, seconds)
+    user_id: ID пользователя для определения текущей активности
+
+    Возвращает строку с диаграммой.
+    """
+    if not activity_stats:
+        return ""
+
+    # Получаем текущую активность
+    current_activity = None
+    if user_id:
+        current = get_current_activity(user_id)
+        if current:
+            current_activity = current[0]
+
+    # Фильтруем активности с нулевым временем и сортируем по убыванию
+    filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration > 0]
+    if not filtered_stats:
+        return ""
+
+    sorted_stats = sorted(filtered_stats, key=lambda x: x[1], reverse=True)
+
+    bars = []
+
+    # Находим максимальное время (для топ активности)
+    max_duration = sorted_stats[0][1] if sorted_stats else 1
+
+    for activity_type, seconds in sorted_stats:
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        # Рассчитываем ширину столбца (12 символов максимум)
+        # Пропорция: (время активности / максимальное время) * 12
+        width_fraction = seconds / max_duration
+        width = int(width_fraction * 12)
+
+        # Если ширина 0, но есть время (маленькое значение) - показываем хотя бы 1 символ
+        if width == 0 and seconds > 0:
+            # Для очень маленьких значений показываем половинку символа или 1 символ
+            if width_fraction >= 0.04:  # Если хотя бы 4% от одного символа
+                width = 1
+            else:
+                width = 0
+
+        # Форматируем ширину
+        if width == 0:
+            # Для очень маленьких значений - половинка символа
+            bar = "▌"
+        else:
+            bar = "█" * width
+
+        # Форматируем время в ЧЧ:ММ:СС
+        total_hours = seconds // 3600
+        total_minutes = (seconds % 3600) // 60
+        total_seconds = seconds % 60
+
+        # Добавляем зеленый кружок для текущей активности
         if activity_type == current_activity:
             bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} 🟢")
         else:
@@ -407,158 +561,3 @@ def format_all_settings(user_id):
 🌍 Часовой пояс: {timezone_display}
 🕒 Локальное время: {format_user_local_time(user_id)}
 """
-
-
-def generate_bar_graph_period(activity_stats, user_id=None):
-    """
-    Генерация столбчатой диаграммы для статистики по активностям за период (неделя/месяц/год).
-    12 символов ████████████ - максимум (топ активность).
-
-    activity_stats: список кортежей (activity_type, seconds)
-    user_id: ID пользователя для определения текущей активности
-
-    Возвращает строку с диаграммой.
-    """
-    if not activity_stats:
-        return ""
-
-    # Получаем текущую активность
-    current_activity = None
-    if user_id:
-        current = get_current_activity(user_id)
-        if current:
-            current_activity = current[0]
-
-    # Фильтруем активности с нулевым временем и сортируем по убыванию
-    filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration > 0]
-    if not filtered_stats:
-        return ""
-
-    sorted_stats = sorted(filtered_stats, key=lambda x: x[1], reverse=True)
-
-    bars = []
-
-    # Находим максимальное время (для топ активности)
-    max_duration = sorted_stats[0][1] if sorted_stats else 1
-
-    for activity_type, seconds in sorted_stats:
-        activity_name = ACTIVITIES.get(activity_type, activity_type)
-        emoji = get_activity_emoji(activity_type)
-
-        # Рассчитываем ширину столбца (12 символов максимум)
-        # Пропорция: (время активности / максимальное время) * 12
-        width_fraction = seconds / max_duration
-        width = int(width_fraction * 12)
-
-        # Если ширина 0, но есть время (маленькое значение) - показываем хотя бы 1 символ
-        if width == 0 and seconds > 0:
-            # Для очень маленьких значений показываем половинку символа или 1 символ
-            if width_fraction >= 0.04:  # Если хотя бы 4% от одного символа
-                width = 1
-            else:
-                width = 0
-
-        # Форматируем ширину
-        if width == 0:
-            # Для очень маленьких значений - половинка символа
-            bar = "▌"
-        else:
-            bar = "█" * width
-
-        # Форматируем время в ЧЧ:ММ:СС
-        total_hours = seconds // 3600
-        total_minutes = (seconds % 3600) // 60
-        total_seconds = seconds % 60
-
-        # Добавляем зеленый кружок для текущей активности
-        if activity_type == current_activity:
-            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} 🟢")
-        else:
-            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d}")
-
-    return "\n".join(bars)
-
-
-def generate_activity_graph_with_dates(stats_by_hour, days=1):
-    """
-    Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
-    Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
-    Первая строка: 00:00-12:00
-    Вторая строка: 12:00-24:00
-
-    stats_by_hour: список из days элементов, каждый элемент - список из 48 кортежей
-                   (activity_type, seconds) для каждого 30-минутного интервала
-    days: количество дней
-
-    Возвращает строку с графиком.
-    """
-    if not stats_by_hour or days <= 0:
-        return ""
-
-    graph_lines = []
-
-    # Проверяем, есть ли вообще активность за период
-    has_activity = False
-    for day_stats in stats_by_hour:
-        for activity_type, seconds in day_stats:
-            if seconds > 0 and activity_type != 'rest':
-                has_activity = True
-                break
-        if has_activity:
-            break
-
-    if not has_activity:
-        return ""
-
-    # Получаем текущую дату для расчета дат дней
-    current_date = datetime.now().date()
-
-    for day_idx, day_stats in enumerate(stats_by_hour):
-        # Рассчитываем дату для этого дня (дни идут в обратном порядке)
-        day_date = current_date - timedelta(days=days - 1 - day_idx)
-
-        # Проверяем, есть ли активность в этом дне
-        day_has_activity = False
-        for activity_type, seconds in day_stats:
-            if seconds > 0 and activity_type != 'rest':
-                day_has_activity = True
-                break
-
-        if not day_has_activity:
-            continue
-
-        # Форматируем дату в формате ДД.ММ.ГГГГ
-        date_str = day_date.strftime("%d.%m.%Y")
-        graph_lines.append(date_str)
-
-        # Создаем график
-        # Первая строка: интервалы 0-23 (00:00-12:00)
-        line1 = ""
-        for i in range(24):  # Интервалы 0-23
-            activity_type, seconds = day_stats[i]
-            if seconds > 0:
-                if activity_type == 'sleep':
-                    line1 += '▁'  # Сон
-                else:
-                    symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
-                    line1 += symbol
-            else:
-                line1 += '▁'  # Отдых или нет активности
-
-        # Вторая строка: интервалы 24-47 (12:00-24:00)
-        line2 = ""
-        for i in range(24, 48):  # Интервалы 24-47
-            activity_type, seconds = day_stats[i]
-            if seconds > 0:
-                if activity_type == 'sleep':
-                    line2 += '▁'  # Сон
-                else:
-                    symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
-                    line2 += symbol
-            else:
-                line2 += '▁'  # Отдых или нет активности
-
-        graph_lines.append(line1)
-        graph_lines.append(line2)
-
-    return "\n".join(graph_lines)

@@ -1,5 +1,5 @@
 """
-Клавиатуры с поддержкой часовых поясов .
+Клавиатуры с поддержкой часовых поясов.
 """
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
@@ -16,6 +16,66 @@ def get_main_keyboard():
             [KeyboardButton(text="💤 Сон"), KeyboardButton(text="☕️ Отдых")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="⚙️ Настройки")]
         ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def get_main_keyboard_with_current(user_id):
+    """
+    Основная клавиатура - активности с отметкой текущей активности.
+    """
+    from database import get_current_activity
+    from utils import get_activity_emoji
+
+    current_activity = get_current_activity(user_id)
+
+    # Определяем текущую активность пользователя
+    current_activity_type = None
+    if current_activity:
+        current_activity_type = current_activity[0]
+
+    # Создаем кнопки с отметкой текущей активности
+    activity_buttons = {
+        "work": ("💼 Труд", "💼 Труд ✅"),
+        "study": ("📚 Учёба", "📚 Учёба ✅"),
+        "sport": ("🏃 Спорт", "🏃 Спорт ✅"),
+        "hobby": ("🎨 Хобби", "🎨 Хобби ✅"),
+        "sleep": ("💤 Сон", "💤 Сон ✅"),
+        "rest": ("☕️ Отдых", "☕️ Отдых ✅")
+    }
+
+    # Создаем строки клавиатуры
+    keyboard_rows = []
+
+    # Первая строка: Труд и Учёба
+    row1 = []
+    for activity_type in ["work", "study"]:
+        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else activity_buttons[activity_type][0]
+        row1.append(KeyboardButton(text=button_text))
+    keyboard_rows.append(row1)
+
+    # Вторая строка: Спорт и Хобби
+    row2 = []
+    for activity_type in ["sport", "hobby"]:
+        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else activity_buttons[activity_type][0]
+        row2.append(KeyboardButton(text=button_text))
+    keyboard_rows.append(row2)
+
+    # Третья строка: Сон и Отдых
+    row3 = []
+    for activity_type in ["sleep", "rest"]:
+        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else activity_buttons[activity_type][0]
+        row3.append(KeyboardButton(text=button_text))
+    keyboard_rows.append(row3)
+
+    # Четвертая строка: Статистика и Настройки
+    keyboard_rows.append([
+        KeyboardButton(text="📊 Статистика"),
+        KeyboardButton(text="⚙️ Настройки")
+    ])
+
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=keyboard_rows,
         resize_keyboard=True
     )
     return keyboard

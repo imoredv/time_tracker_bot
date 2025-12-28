@@ -36,6 +36,15 @@ from utils import (
 from reminder import ReminderManager
 from timezone_manager import timezone_manager
 
+from keyboards import get_main_keyboard_with_current
+
+from utils import (
+    get_activity_emoji, format_duration_simple, format_stats_message,
+    format_interval, format_timezone_info, get_timezone_display_name,
+    format_user_local_time, format_complete_stats, format_all_settings,
+    generate_activity_graph_with_dates, generate_bar_graph_period
+)
+
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -81,7 +90,7 @@ async def cmd_start(message: Message):
         f"Локальное время: {format_user_local_time(message.from_user.id)}"
     )
 
-    await message.answer(welcome_text, reply_markup=get_main_keyboard())
+    await message.answer(welcome_text, reply_markup=get_main_keyboard_with_current(message.from_user.id))
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -297,61 +306,69 @@ async def cmd_stats(message: Message):
 
     await message.answer(stats_text)
 
-# Обработчики активностей
-activity_buttons = {
-    "💼 Труд": "work",
-    "📚 Учёба": "study",
-    "🏃 Спорт": "sport",
-    "🎨 Хобби": "hobby",
-    "💤 Сон": "sleep",
-    "☕️ Отдых": "rest"
-}
 
-for button_text, activity_type in activity_buttons.items():
-    @dp.message(F.text == button_text)
-    async def handle_activity(message: Message, state: FSMContext, btn_text=button_text, act_type=activity_type):
-        user_id = message.from_user.id
+@dp.message(F.text.in_(["💼 Труд", "💼 Труд ✅", "📚 Учёба", "📚 Учёба ✅", "🏃 Спорт", "🏃 Спорт ✅",
+                        "🎨 Хобби", "🎨 Хобби ✅", "💤 Сон", "💤 Сон ✅", "☕️ Отдых", "☕️ Отдых ✅"]))
+async def handle_activity(message: Message, state: FSMContext):
+    """
+    Обработчик выбора активности.
+    """
+    user_id = message.from_user.id
 
-        # Проверяем, активна ли уже такая же активность
-        current = get_current_activity(user_id)
-        if current and current[0] == act_type:
-            display_text = get_display_activity(user_id, act_type)
-            start_time = datetime.fromisoformat(current[1])
-            current_time = datetime.now()
-            duration = int((current_time - start_time).total_seconds())
+    # Определяем тип активности из текста кнопки
+    button_text = message.text
+    activity_mapping = {
+        "💼 Труд": "work", "💼 Труд ✅": "work",
+        "📚 Учёба": "study", "📚 Учёба ✅": "study",
+        "🏃 Спорт": "sport", "🏃 Спорт ✅": "sport",
+        "🎨 Хобби": "hobby", "🎨 Хобби ✅": "hobby",
+        "💤 Сон": "sleep", "💤 Сон ✅": "sleep",
+        "☕️ Отдых": "rest", "☕️ Отдых ✅": "rest"
+    }
 
-            await message.answer(
-                f"{display_text} продолжается\n{format_duration_simple(duration)}"
-            )
-            return
+    act_type = activity_mapping.get(button_text, "work")
 
-        # Запускаем новую активность
-        completed_activity = start_activity(user_id, act_type)
-
-        response = ""
-
-        if completed_activity:
-            completed_type, start_time_str = completed_activity
-            display_text = get_display_activity(user_id, completed_type)
-
-            start_time = datetime.fromisoformat(start_time_str)
-            end_time = datetime.now()
-            duration = int((end_time - start_time).total_seconds())
-
-            response += f"{display_text} стоп\n{format_duration_simple(duration)}\n\n"
-
-        # Новая активность
+    # Проверяем, активна ли уже такая же активность
+    current = get_current_activity(user_id)
+    if current and current[0] == act_type:
         display_text = get_display_activity(user_id, act_type)
-        response += f"{display_text} старт\n00:00:00\n\n"
+        start_time = datetime.fromisoformat(current[1])
+        current_time = datetime.now()
+        duration = int((current_time - start_time).total_seconds())
 
-        # Предлагаем выбрать интервал уведомлений (только 10, 30, 60 минут)
-        response += "📅 Выберите интервал уведомлений для этой активности:"
+        await message.answer(
+            f"{display_text} продолжается\n{format_duration_simple(duration)}",
+            reply_markup=get_main_keyboard_with_current(user_id)
+        )
+        return
 
-        await message.answer(response, reply_markup=get_activity_reminder_keyboard())
+    # Запускаем новую активность
+    completed_activity = start_activity(user_id, act_type)
 
-        # Сохраняем информацию о активности в состоянии
-        await state.update_data(activity_type=act_type)
-        await state.set_state(EditStates.waiting_for_activity_reminder)
+    response = ""
+
+    if completed_activity:
+        completed_type, start_time_str = completed_activity
+        display_text = get_display_activity(user_id, completed_type)
+
+        start_time = datetime.fromisoformat(start_time_str)
+        end_time = datetime.now()
+        duration = int((end_time - start_time).total_seconds())
+
+        response += f"{display_text} стоп\n{format_duration_simple(duration)}\n\n"
+
+    # Новая активность
+    display_text = get_display_activity(user_id, act_type)
+    response += f"{display_text} старт\n00:00:00\n\n"
+
+    # Предлагаем выбрать интервал уведомлений (только 10, 30, 60 минут)
+    response += "📅 Выберите интервал уведомлений для этой активности:"
+
+    await message.answer(response, reply_markup=get_activity_reminder_keyboard())
+
+    # Сохраняем информацию о активности в состоянии
+    await state.update_data(activity_type=act_type)
+    await state.set_state(EditStates.waiting_for_activity_reminder)
 
 
 @dp.message(F.text == "📊 Статистика")
@@ -723,7 +740,7 @@ async def handle_back(message: Message):
     """
     Назад в главное меню.
     """
-    await message.answer("Главное меню", reply_markup=get_main_keyboard())
+    await message.answer("Главное меню", reply_markup=get_main_keyboard_with_current(message.from_user.id))
 
 # Обработчики инлайн-кнопок для интервалов в настройках
 @dp.callback_query(F.data.startswith("interval_"))
@@ -819,8 +836,11 @@ async def handle_activity_reminder_callback(callback: CallbackQuery, state: FSMC
         )
         await callback.answer(f"Интервал: {interval_minutes} мин")
 
-        # Очищаем состояние
+        # Очищаем состояние и обновляем главное меню
         await state.clear()
+
+        # Отправляем обновленное главное меню
+        await callback.message.answer("Активность запущена", reply_markup=get_main_keyboard_with_current(user_id))
 
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
@@ -989,7 +1009,9 @@ async def handle_other_messages(message: Message):
     if not message.text.startswith('/'):
         # Проверяем, не является ли это кнопкой из клавиатуры
         if message.text not in [
-            "💼 Труд", "📚 Учёба", "🏃 Спорт", "🎨 Хобби", "💤 Сон", "☕️ Отдых",
+            "💼 Труд", "💼 Труд ✅", "📚 Учёба", "📚 Учёба ✅",
+            "🏃 Спорт", "🏃 Спорт ✅", "🎨 Хобби", "🎨 Хобби ✅",
+            "💤 Сон", "💤 Сон ✅", "☕️ Отдых", "☕️ Отдых ✅",
             "📊 Статистика", "⚙️ Настройки", "📅 Неделя", "📅 Месяц", "📊 Год",
             "⏰ Напоминания", "🌙 Тихий час", "🗑️ Очистить", "⬅️ Назад",
             "🌍 Часовой пояс", "🌍 Автоопределение", "🇷🇺 Москва (UTC+3)",
@@ -998,7 +1020,7 @@ async def handle_other_messages(message: Message):
             "🇺🇸 Нью-Йорк (UTC-5)"
         ]:
             await message.answer("Пожалуйста, используйте кнопки для взаимодействия с ботом.",
-                               reply_markup=get_main_keyboard())
+                               reply_markup=get_main_keyboard_with_current(message.from_user.id))
 
 async def main():
     """
