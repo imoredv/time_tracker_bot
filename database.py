@@ -393,17 +393,31 @@ def get_period_stats(user_id, period_days):
 
     return [(activity_type, duration) for activity_type, duration in stats_dict.items()]
 
+
 def get_hourly_activity_stats(user_id, days=1):
     """
     Получение статистики активности по 30-минутным интервалам за указанное количество дней.
+    Теперь с учетом часового пояса пользователя.
     Возвращает список из 48 элементов (24 часа * 2 интервала) для каждого дня.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=days-1)
+    # Получаем часовой пояс пользователя
+    timezone = get_user_timezone(user_id)
+
+    # Получаем локальную дату пользователя
+    try:
+        import pytz
+        user_tz = pytz.timezone(timezone)
+        user_now = datetime.now(user_tz)
+        end_date = user_now.date()
+    except:
+        user_now = datetime.now()
+        end_date = user_now.date()
+
+    start_date = end_date - timedelta(days=days - 1)
 
     # Получаем все активности за период
     cursor.execute('''
@@ -430,24 +444,41 @@ def get_hourly_activity_stats(user_id, days=1):
         for activity_type, start_time_str, duration in activities:
             start_time = datetime.fromisoformat(start_time_str)
 
-            # Проверяем, относится ли активность к текущему дню
-            if start_time.date() != current_date:
+            # Конвертируем время в часовой пояс пользователя
+            try:
+                user_tz = pytz.timezone(timezone)
+                start_time_user = start_time.astimezone(user_tz)
+            except:
+                start_time_user = start_time
+
+            # Проверяем, относится ли активность к текущему дню в часовом поясе пользователя
+            if start_time_user.date() != current_date:
                 continue
 
             # Рассчитываем время окончания активности
             end_time = start_time + timedelta(seconds=duration)
 
+            # Конвертируем время окончания в часовой пояс пользователя
+            try:
+                end_time_user = end_time.astimezone(user_tz)
+            except:
+                end_time_user = end_time
+
             # Разбиваем активность на 30-минутные интервалы
-            interval_start = start_time
+            interval_start = start_time_user
             remaining_seconds = duration
 
             while remaining_seconds > 0:
-                # Определяем начало текущего 30-минутного интервала
-                interval_num = (interval_start.hour * 2) + (interval_start.minute // 30)
+                # Определяем час и минуту в локальном времени пользователя
+                hour = interval_start.hour
+                minute = interval_start.minute
+
+                # Определяем номер интервала (0-47)
+                interval_num = (hour * 2) + (minute // 30)
 
                 # Определяем конец текущего интервала
                 interval_end_time = interval_start.replace(
-                    minute=(interval_start.minute // 30) * 30,
+                    minute=(minute // 30) * 30,
                     second=0,
                     microsecond=0
                 ) + timedelta(minutes=30)

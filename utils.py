@@ -79,7 +79,7 @@ def format_stats_message(stats, period_name, user_id=None):
 
         # Добавляем пометку, если это текущая активность
         if activity_type == current_activity:
-            message += f"{emoji} {activity_name} {hours:02d}:{minutes:02d}:{seconds:02d} (Текущая)\n"
+            message += f"{emoji} {activity_name} {hours:02d}:{minutes:02d}:{seconds:02d} 🟢\n"
         else:
             message += f"{emoji} {activity_name} {hours:02d}:{minutes:02d}:{seconds:02d}\n"
 
@@ -100,9 +100,13 @@ def format_stats_message(stats, period_name, user_id=None):
 
     return message
 
+
 def generate_activity_graph(stats_by_hour, days=1):
     """
     Генерация графиков активности за указанное количество дней.
+    Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
+    Первая строка: 00:00-12:00
+    Вторая строка: 12:00-24:00
 
     stats_by_hour: список из days элементов, каждый элемент - список из 48 кортежей
                    (activity_type, seconds) для каждого 30-минутного интервала
@@ -139,24 +143,38 @@ def generate_activity_graph(stats_by_hour, days=1):
         if not day_has_activity:
             continue
 
-        # Создаем график без символа ▁ (для сна)
-        line = ""
-        for i in range(48):  # 48 интервалов по 30 минут
+        # Создаем график
+        # Первая строка: интервалы 0-23 (00:00-12:00)
+        line1 = ""
+        for i in range(24):  # Интервалы 0-23
             activity_type, seconds = day_stats[i]
             if seconds > 0:
                 if activity_type == 'sleep':
-                    line += '▁'  # Сон
+                    line1 += '▁'  # Сон
                 else:
                     symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
-                    line += symbol
+                    line1 += symbol
             else:
-                line += '▁'  # Отдых или нет активности
+                line1 += '▁'  # Отдых или нет активности
 
-        # Разбиваем на две строки по 24 символа (00:00-12:00 и 12:00-24:00)
-        graph_lines.append(line[:24])
-        graph_lines.append(line[24:])
+        # Вторая строка: интервалы 24-47 (12:00-24:00)
+        line2 = ""
+        for i in range(24, 48):  # Интервалы 24-47
+            activity_type, seconds = day_stats[i]
+            if seconds > 0:
+                if activity_type == 'sleep':
+                    line2 += '▁'  # Сон
+                else:
+                    symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
+                    line2 += symbol
+            else:
+                line2 += '▁'  # Отдых или нет активности
+
+        graph_lines.append(line1)
+        graph_lines.append(line2)
 
     return "\n".join(graph_lines)
+
 
 def generate_bar_graph(activity_stats, user_id=None, max_width=12):
     """
@@ -223,9 +241,9 @@ def generate_bar_graph(activity_stats, user_id=None, max_width=12):
         total_minutes = (seconds % 3600) // 60
         total_seconds = seconds % 60
 
-        # Добавляем пометку текущей активности
+        # Добавляем зеленый кружок для текущей активности вместо "(Текущая)"
         if activity_type == current_activity:
-            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} (Текущая)")
+            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} 🟢")
         else:
             bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d}")
 
