@@ -41,8 +41,6 @@ async def get_daily_statistics(user_id):
     # Форматирование
     message_text = "📊 Суточная статистика:\n\n"
 
-    # УБИРАЕМ блок с текущей активностью здесь
-
     # График активности за 2 дня
     timeline_graph = generate_activity_graph_with_dates(hourly_stats, 2)
     if timeline_graph and timeline_graph.strip():
@@ -50,71 +48,67 @@ async def get_daily_statistics(user_id):
         message_text += "\n\n"
 
     # Статистика за 24 часа
-    message_text += "За последние 24 часа:\n\n"
-    bar_graph_24h = generate_bar_graph_period(activity_stats_24h, user_id)
-    if bar_graph_24h:
-        # Подсчитываем общее время за 24 часа
-        total_seconds_24h = sum(duration for _, duration in activity_stats_24h)
-        hours_24h = total_seconds_24h // 3600
-        minutes_24h = (total_seconds_24h % 3600) // 60
-        seconds_24h = total_seconds_24h % 60
+    message_text += "За 24 часа:\n\n"
 
-        message_text += bar_graph_24h
-        message_text += f"\n\n📈 Всего за 24 часа: {hours_24h:02d}:{minutes_24h:02d}:{seconds_24h:02d}"
+    # Фильтруем активности больше 1 минуты для 24 часов
+    filtered_24h = [(act_type, duration) for act_type, duration in activity_stats_24h if duration >= 60]
+
+    # Формируем бар-граф для отфильтрованных активностей
+    if filtered_24h:
+        bar_graph_24h = generate_bar_graph_period(filtered_24h, user_id)
+        if bar_graph_24h:
+            message_text += bar_graph_24h
     else:
         message_text += "Нет данных за 24 часа"
 
     message_text += "\n\n"
 
     # Статистика с начала суток
-    message_text += "С начала суток:\n\n"
-    bar_graph_today = generate_bar_graph_period(stats_today, user_id)
-    if bar_graph_today:
-        # Подсчитываем общее время за сегодня
-        total_seconds_today = sum(duration for _, duration in stats_today)
-        hours_today = total_seconds_today // 3600
-        minutes_today = (total_seconds_today % 3600) // 60
-        seconds_today = total_seconds_today % 60
+    message_text += "Сегодня:\n\n"
 
-        message_text += bar_graph_today
-        message_text += f"\n\n📈 Всего за сегодня: {hours_today:02d}:{minutes_today:02d}:{seconds_today:02d}"
-    else:
-        message_text += "Нет данных за сегодня\n"
+    # Фильтруем активности больше 1 минуты для сегодня
+    filtered_today = [(act_type, duration) for act_type, duration in stats_today if duration >= 60]
 
-    return message_text
+    if filtered_today:
+        bar_graph_today = generate_bar_graph_period(filtered_today, user_id)
+        if bar_graph_today:
+            message_text += bar_graph_today
 
+    # Добавляем список незадействованных активностей
+    unused_activities = []
+    for act_type in ACTIVITIES.keys():
+        # Проверяем, есть ли активность в статистике сегодня
+        found = False
+        for act_type_stat, duration in stats_today:
+            if act_type_stat == act_type and duration >= 60:
+                found = True
+                break
 
-async def get_week_statistics(user_id):
-    """
-    Статистика за неделю.
-    """
-    hourly_stats = get_hourly_activity_stats(user_id, 7)
-    activity_stats = get_total_stats_by_activity(user_id, 7)
-    current = get_current_activity(user_id)
+        if not found:
+            emoji = get_activity_emoji(act_type)
+            name = ACTIVITIES.get(act_type, act_type)
+            unused_activities.append(f"{emoji} {name}")
 
-    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 7)
-    bar_graph = generate_bar_graph_period(activity_stats, user_id)
+    if unused_activities:
+        if filtered_today:
+            message_text += "\n"
+        message_text += ", ".join(unused_activities) + " 📌"
 
-    total_seconds = sum(duration for _, duration in activity_stats)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
+    message_text += "\n\n"
 
-    message_text = "📅 Статистика за неделю:\n\n"
+    # Подсчитываем общее время за 24 часа
+    total_seconds_24h = sum(duration for _, duration in activity_stats_24h)
+    hours_24h = total_seconds_24h // 3600
+    minutes_24h = (total_seconds_24h % 3600) // 60
 
-    # УБИРАЕМ блок с текущей активностью здесь
+    # Подсчитываем общее время за сегодня
+    total_seconds_today = sum(duration for _, duration in stats_today)
+    hours_today = total_seconds_today // 3600
+    minutes_today = (total_seconds_today % 3600) // 60
 
-    if timeline_graph and timeline_graph.strip():
-        message_text += timeline_graph
-        message_text += "\n\n"
-
-    message_text += "Рейтинг:\n\n"
-
-    if bar_graph:
-        message_text += bar_graph
-        message_text += f"\n\n📈 Показано за неделю: {hours:02d}:{minutes:02d}:{seconds:02d}"
-    else:
-        message_text += "Нет данных об активностях\n"
+    # Форматируем общее время
+    message_text += f"📈 Всего за сегодня: {hours_today}:{minutes_today:02d}\n"
+    message_text += f"📈 Всего за 24 часа: {hours_24h}:{minutes_24h:02d}"
 
     return message_text
 
@@ -128,12 +122,14 @@ async def get_week_statistics(user_id):
     current = get_current_activity(user_id)
 
     timeline_graph = generate_activity_graph_with_dates(hourly_stats, 7)
-    bar_graph = generate_bar_graph_period(activity_stats, user_id)
 
-    total_seconds = sum(duration for _, duration in activity_stats)
+    # Фильтруем активности больше 1 минуты
+    filtered_stats = [(act_type, duration) for act_type, duration in activity_stats if duration >= 60]
+    bar_graph = generate_bar_graph_period(filtered_stats, user_id)
+
+    total_seconds = sum(duration for _, duration in filtered_stats)
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
 
     message_text = "📅 Статистика за неделю:\n\n"
 
@@ -143,7 +139,10 @@ async def get_week_statistics(user_id):
         current_duration = int((datetime.now() - start_time_dt).total_seconds())
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
-        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
+        # Форматируем без секунд
+        hours_current = current_duration // 3600
+        minutes_current = (current_duration % 3600) // 60
+        message_text += f"Текущая: {emoji} {activity_name} {hours_current}:{minutes_current:02d}\n\n"
     else:
         message_text += "Текущая: Нет активной задачи\n\n"
 
@@ -155,7 +154,7 @@ async def get_week_statistics(user_id):
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Показано за неделю: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        message_text += f"\n\n📈 Показано за неделю: {hours}:{minutes:02d}"
     else:
         message_text += "Нет данных об активностях\n"
 

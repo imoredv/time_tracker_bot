@@ -270,8 +270,8 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         if current:
             current_activity = current[0]
 
-    # Фильтруем и сортируем
-    filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration > 0]
+    # Фильтруем и сортируем (дополнительная фильтрация, но основная уже в statistics.py)
+    filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration >= 60]
     if not filtered_stats:
         return ""
 
@@ -301,16 +301,18 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         else:
             bar = "█" * width
 
-        # Форматируем время
+        # Форматируем время (без секунд)
         total_hours = seconds // 3600
         total_minutes = (seconds % 3600) // 60
-        total_seconds = seconds % 60
+
+        # Форматируем время в формате "5:10"
+        time_str = f"{total_hours}:{total_minutes:02d}"
 
         # Добавляем пометку текущей активности
         if activity_type == current_activity:
-            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d} 🟢")
+            bars.append(f"{bar} {emoji} {activity_name} {time_str} 🟢")
         else:
-            bars.append(f"{bar} {emoji} {activity_name} {total_hours:02d}:{total_minutes:02d}:{total_seconds:02d}")
+            bars.append(f"{bar} {emoji} {activity_name} {time_str}")
 
     return "\n".join(bars)
 
