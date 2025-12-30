@@ -23,94 +23,100 @@ async def get_daily_statistics(user_id):
     """
     Полная статистика за день: графики + за 24 часа + с начала суток.
     """
-    # Получаем сегодняшнюю дату в часовом поясе пользователя
-    today_date = get_user_current_date(user_id)
+    try:
+        # Получаем сегодняшнюю дату в часовом поясе пользователя
+        today_date = get_user_current_date(user_id)
 
-    # Статистика за 2 дня для графиков (вчера и позавчера)
-    hourly_stats = get_hourly_activity_stats(user_id, 2)
+        # Статистика за 2 дня для графиков (вчера и позавчера)
+        hourly_stats_with_dates = get_hourly_activity_stats(user_id, 2)
 
-    # Статистика за 24 часа
-    activity_stats_24h = get_total_stats_by_activity(user_id, 1)
+        # Статистика за 24 часа
+        activity_stats_24h = get_total_stats_by_activity(user_id, 1)
 
-    # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
-    stats_today = get_daily_stats_sorted(user_id, today_date)
+        # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
+        stats_today = get_daily_stats_sorted(user_id, today_date)
 
-    # Отладочный вывод
-    print(f"DEBUG: user_id={user_id}, today_date={today_date}")
-    print(f"DEBUG: current_date={datetime.now().date()}")
-    print(f"DEBUG: stats_today={stats_today}")
+        # Отладочный вывод
+        print(f"DEBUG: user_id={user_id}, today_date={today_date}")
+        if hourly_stats_with_dates:
+            print(f"DEBUG: hourly_stats dates: {[date for date, _ in hourly_stats_with_dates]}")
+        else:
+            print(f"DEBUG: hourly_stats_with_dates is empty")
 
-    # Текущая активность
-    current = get_current_activity(user_id)
+        # Текущая активность
+        current = get_current_activity(user_id)
 
-    # Форматирование
-    message_text = "📊 Суточная статистика:\n\n"
+        # Форматирование
+        message_text = "📊 Суточная статистика:\n\n"
 
-    # График активности за 2 дня (вчера и позавчера)
-    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 2)
-    if timeline_graph and timeline_graph.strip():
-        message_text += timeline_graph
+        # График активности за 2 дня
+        if hourly_stats_with_dates:
+            timeline_graph = generate_activity_graph_with_dates(hourly_stats_with_dates, 2)
+            if timeline_graph and timeline_graph.strip():
+                message_text += timeline_graph
+                message_text += "\n\n"
+        else:
+            print(f"DEBUG: No hourly stats available")
+
+        # Статистика за 24 часа
+        message_text += "За 24 часа:\n\n"
+
+        # Фильтруем активности больше 1 минуты для 24 часов
+        filtered_24h = [(act_type, duration) for act_type, duration in activity_stats_24h if duration >= 60]
+
+        # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
+        if filtered_24h:
+            bar_graph_24h = generate_bar_graph_period(filtered_24h, None)  # Передаем None чтобы убрать зеленую точку
+            if bar_graph_24h:
+                message_text += bar_graph_24h
+        else:
+            message_text += "Нет данных за 24 часа"
+
         message_text += "\n\n"
 
-    # Статистика за 24 часа
-    message_text += "За 24 часа:\n\n"
+        # Статистика с начала суток
+        message_text += "Сегодня:\n\n"
 
-    # Фильтруем активности больше 1 минуты для 24 часов
-    filtered_24h = [(act_type, duration) for act_type, duration in activity_stats_24h if duration >= 60]
+        # Фильтруем активности больше 1 минуты для сегодня
+        filtered_today = [(act_type, duration) for act_type, duration in stats_today if duration >= 60]
 
-    # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
-    if filtered_24h:
-        bar_graph_24h = generate_bar_graph_period(filtered_24h, None)  # Передаем None чтобы убрать зеленую точку
-        if bar_graph_24h:
-            message_text += bar_graph_24h
-    else:
-        message_text += "Нет данных за 24 часа"
-
-    message_text += "\n\n"
-
-    # Статистика с начала суток
-    message_text += "Сегодня:\n\n"
-
-    # Фильтруем активности больше 1 минуты для сегодня
-    filtered_today = [(act_type, duration) for act_type, duration in stats_today if duration >= 60]
-
-    if filtered_today:
-        bar_graph_today = generate_bar_graph_period(filtered_today, user_id)
-        if bar_graph_today:
-            message_text += bar_graph_today
-
-    # Добавляем список незадействованных активностей с ❌
-    unused_activities = []
-    for act_type in ACTIVITIES.keys():
-        # Проверяем, есть ли активность в статистике сегодня (больше 1 минуты)
-        found = False
-        for act_type_stat, duration in stats_today:
-            if act_type_stat == act_type and duration >= 60:
-                found = True
-                break
-
-        if not found:
-            name = ACTIVITIES.get(act_type, act_type)
-            unused_activities.append(name)
-
-    if unused_activities:
         if filtered_today:
-            message_text += "\n"
-        message_text += "❌ " + ", ".join(unused_activities)
+            bar_graph_today = generate_bar_graph_period(filtered_today, user_id)
+            if bar_graph_today:
+                message_text += bar_graph_today
+            else:
+                message_text += "Нет данных за сегодня"
+        else:
+            message_text += "Нет данных за сегодня"
 
-    message_text += "\n\n"
+        # Добавляем список незадействованных активностей с ❌
+        unused_activities = []
+        for act_type in ACTIVITIES.keys():
+            # Проверяем, есть ли активность в статистике сегодня (больше 1 минуты)
+            found = False
+            for act_type_stat, duration in stats_today:
+                if act_type_stat == act_type and duration >= 60:
+                    found = True
+                    break
 
-    # Подсчитываем общее время за 24 часа
-    total_seconds_24h = sum(duration for _, duration in activity_stats_24h)
-    hours_24h = total_seconds_24h // 3600
-    minutes_24h = (total_seconds_24h % 3600) // 60
+            if not found:
+                name = ACTIVITIES.get(act_type, act_type)
+                unused_activities.append(name)
 
-    # Подсчитываем общее время за сегодня
-    total_seconds_today = sum(duration for _, duration in stats_today)
-    hours_today = total_seconds_today // 3600
-    minutes_today = (total_seconds_today % 3600) // 60
+        if unused_activities:
+            if filtered_today:
+                message_text += "\n"
+            message_text += "❌ " + ", ".join(unused_activities)
 
-    return message_text
+        message_text += "\n\n"
+
+        return message_text
+
+    except Exception as e:
+        print(f"❌ Ошибка в get_daily_statistics: {e}")
+        import traceback
+        traceback.print_exc()
+        return "⚠️ Произошла ошибка при получении статистики. Попробуйте позже."
 
 
 async def get_week_statistics(user_id):

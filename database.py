@@ -467,7 +467,7 @@ def get_period_stats(user_id, period_days):
 def get_hourly_activity_stats(user_id, days=1):
     """
     Получение статистики активности по 30-минутным интервалам за указанное количество дней.
-    С учетом часового пояса пользователя.
+    С учетом часового пояса пользователя. Возвращает список кортежей (дата, статистика).
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -493,7 +493,6 @@ def get_hourly_activity_stats(user_id, days=1):
     }
 
     user_tz_name = tz_mapping.get(timezone_code, 'UTC')
-    print(f"DEBUG: Часовой пояс пользователя: {timezone_code} -> {user_tz_name}")
 
     try:
         import pytz
@@ -520,7 +519,7 @@ def get_hourly_activity_stats(user_id, days=1):
     activities = cursor.fetchall()
     conn.close()
 
-    days_stats = []
+    days_stats_with_dates = []
 
     for day_offset in range(days):
         current_day = start_date + timedelta(days=day_offset)
@@ -582,9 +581,9 @@ def get_hourly_activity_stats(user_id, days=1):
                 interval_start = interval_end_time
                 remaining_seconds -= seconds_in_interval
 
-        days_stats.append(hourly_stats)
+        days_stats_with_dates.append((current_day, hourly_stats))
 
-    return days_stats
+    return days_stats_with_dates
 
 def get_total_stats_by_activity(user_id, days=1):
     """

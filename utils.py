@@ -183,39 +183,17 @@ def format_all_settings(user_id):
 """
 
 
-def generate_activity_graph_with_dates(stats_by_hour, days=1):
+def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
     """
     Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
-    Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
-    Исправлена логика расчета дат.
+    Теперь получает список кортежей (дата, статистика).
     """
-    if not stats_by_hour or days <= 0:
+    if not days_stats_with_dates or days <= 0:
         return ""
 
     graph_lines = []
 
-    # Проверяем, есть ли вообще активность за период
-    has_activity = False
-    for day_stats in stats_by_hour:
-        for activity_type, seconds in day_stats:
-            if seconds > 0 and activity_type != 'rest':
-                has_activity = True
-                break
-        if has_activity:
-            break
-
-    if not has_activity:
-        return ""
-
-    # Получаем текущую дату для расчета дат дней
-    current_date = datetime.now().date()
-
-    # Правильный расчет дат: последний день - вчера, предпоследний - позавчера
-    for day_idx, day_stats in enumerate(stats_by_hour):
-        # Рассчитываем дату для этого дня
-        # day_idx=0 -> вчера, day_idx=1 -> позавчера и т.д.
-        day_date = current_date - timedelta(days=(days - day_idx))
-
+    for day_date, day_stats in days_stats_with_dates:
         # Проверяем, есть ли активность в этом дне
         day_has_activity = False
         for activity_type, seconds in day_stats:
