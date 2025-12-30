@@ -337,7 +337,13 @@ def get_daily_stats(user_id, date=None):
         else:
             stats_dict[activity_type] = current_duration
 
-    return [(activity_type, duration) for activity_type, duration in stats_dict.items()]
+    from config import ACTIVITIES
+    result = []
+    for activity_type in ACTIVITIES.keys():
+        duration = stats_dict.get(activity_type, 0)
+        result.append((activity_type, duration))
+
+    return result
 
 def get_period_stats(user_id, period_days):
     """
@@ -391,7 +397,16 @@ def get_period_stats(user_id, period_days):
             else:
                 stats_dict[activity_type] = current_duration
 
-    return [(activity_type, duration) for activity_type, duration in stats_dict.items()]
+    from config import ACTIVITIES
+    result = []
+    for activity_type in ACTIVITIES.keys():
+        duration = stats_dict.get(activity_type, 0)
+        result.append((activity_type, duration))
+
+    result.sort(key=lambda x: x[1], reverse=True)
+
+    conn.close()
+    return result
 
 
 def get_hourly_activity_stats(user_id, days=1):
@@ -880,3 +895,35 @@ def get_daily_stats_sorted(user_id, date=None):
     stats = get_daily_stats(user_id, date)
     # Сортируем по убыванию времени
     return sorted(stats, key=lambda x: x[1], reverse=True)
+
+def get_user_current_date(user_id):
+    """
+    Получение текущей даты в часовом поясе пользователя.
+    """
+    timezone_code = get_user_timezone(user_id)
+
+    tz_mapping = {
+        'Russian Standard Time': 'Europe/Moscow',
+        'FLE Standard Time': 'Europe/Kiev',
+        'Belarus Standard Time': 'Europe/Minsk',
+        'West Asia Standard Time': 'Asia/Yekaterinburg',
+        'Central Asia Standard Time': 'Asia/Almaty',
+        'SE Asia Standard Time': 'Asia/Bangkok',
+        'China Standard Time': 'Asia/Shanghai',
+        'Tokyo Standard Time': 'Asia/Tokyo',
+        'GMT Standard Time': 'Europe/London',
+        'W. Europe Standard Time': 'Europe/Berlin',
+        'Eastern Standard Time': 'America/New_York',
+        'Pacific Standard Time': 'America/Los_Angeles',
+        'UTC': 'UTC',
+    }
+
+    user_tz_name = tz_mapping.get(timezone_code, 'UTC')
+
+    try:
+        import pytz
+        user_tz = pytz.timezone(user_tz_name)
+        user_now = datetime.now(user_tz)
+        return user_now.date()
+    except:
+        return datetime.now().date()

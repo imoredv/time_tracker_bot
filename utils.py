@@ -187,14 +187,6 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
     """
     Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
     Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
-    Первая строка: 00:00-12:00
-    Вторая строка: 12:00-24:00
-
-    stats_by_hour: список из days элементов, каждый элемент - список из 48 кортежей
-                   (activity_type, seconds) для каждого 30-минутного интервала
-    days: количество дней
-
-    Возвращает строку с графиком.
     """
     if not stats_by_hour or days <= 0:
         return ""
@@ -218,7 +210,7 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
     current_date = datetime.now().date()
 
     for day_idx, day_stats in enumerate(stats_by_hour):
-        # Рассчитываем дату для этого дня (дни идут в обратном порядке)
+        # Рассчитываем дату для этого дня
         day_date = current_date - timedelta(days=days - 1 - day_idx)
 
         # Проверяем, есть ли активность в этом дне
@@ -236,31 +228,29 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
         graph_lines.append(date_str)
 
         # Создаем график
-        # Первая строка: интервалы 0-23 (00:00-12:00)
-        line1 = ""
-        for i in range(24):  # Интервалы 0-23
+        line1 = ""  # 00:00-12:00
+        for i in range(24):
             activity_type, seconds = day_stats[i]
             if seconds > 0:
                 if activity_type == 'sleep':
-                    line1 += '▁'  # Сон
+                    line1 += '▁'
                 else:
                     symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
                     line1 += symbol
             else:
-                line1 += '▁'  # Отдых или нет активности
+                line1 += '▁'
 
-        # Вторая строка: интервалы 24-47 (12:00-24:00)
-        line2 = ""
-        for i in range(24, 48):  # Интервалы 24-47
+        line2 = ""  # 12:00-24:00
+        for i in range(24, 48):
             activity_type, seconds = day_stats[i]
             if seconds > 0:
                 if activity_type == 'sleep':
-                    line2 += '▁'  # Сон
+                    line2 += '▁'
                 else:
                     symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
                     line2 += symbol
             else:
-                line2 += '▁'  # Отдых или нет активности
+                line2 += '▁'
 
         graph_lines.append(line1)
         graph_lines.append(line2)

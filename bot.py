@@ -28,10 +28,11 @@ from utils import (
     get_activity_emoji, format_duration_simple,
     generate_activity_graph_with_dates, generate_bar_graph_period,
     format_user_local_time, get_timezone_display_name,
-    format_all_settings, format_interval  # Добавлено
+    format_all_settings, format_interval
 )
 
 from timezone_manager import timezone_manager
+from statistics import get_daily_statistics, get_week_statistics
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN)
@@ -232,94 +233,18 @@ async def handle_activity(message: types.Message, state: FSMContext):
 
 @dp.message(F.text == "📊 Статистика")
 async def handle_statistics(message: types.Message):
-    """Статистика за последние 24 часа."""
+    """Статистика за последние 24 часа И с начала суток."""
     user_id = message.from_user.id
-
-    hourly_stats = get_hourly_activity_stats(user_id, 2)
-    activity_stats_24h = get_total_stats_by_activity(user_id, 1)
-    current = get_current_activity(user_id)
-
-    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 2)
-    bar_graph = generate_bar_graph_period(activity_stats_24h, user_id)
-
-    total_seconds = sum(duration for _, duration in activity_stats_24h)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-
-    message_text = "📊 Статистика за последние 24 часа:\n\n"
-
-    if current:
-        activity_type, start_time = current
-        start_time_dt = datetime.fromisoformat(start_time)
-        current_duration = int((datetime.now() - start_time_dt).total_seconds())
-
-        activity_name = ACTIVITIES.get(activity_type, activity_type)
-        emoji = get_activity_emoji(activity_type)
-
-        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
-    else:
-        message_text += "Текущая: Нет активной задачи\n\n"
-
-    if timeline_graph and timeline_graph.strip():
-        message_text += timeline_graph
-        message_text += "\n\n"
-
-    message_text += "Рейтинг:\n\n"
-
-    if bar_graph:
-        message_text += bar_graph
-        message_text += f"\n\n📈 Показано за 24 часа: {hours:02d}:{minutes:02d}:{seconds:02d}"
-    else:
-        message_text += "Нет данных об активностях\n"
-
-    await message.answer(message_text, reply_markup=get_statistics_keyboard())
+    stats_text = await get_daily_statistics(user_id)
+    await message.answer(stats_text, reply_markup=get_statistics_keyboard())
 
 
 @dp.message(F.text == "📅 Неделя")
 async def handle_week_statistics(message: types.Message):
     """Статистика за неделю."""
     user_id = message.from_user.id
-
-    hourly_stats = get_hourly_activity_stats(user_id, 7)
-    activity_stats = get_total_stats_by_activity(user_id, 7)
-    current = get_current_activity(user_id)
-
-    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 7)
-    bar_graph = generate_bar_graph_period(activity_stats, user_id)
-
-    total_seconds = sum(duration for _, duration in activity_stats)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-
-    message_text = "📅 Статистика за неделю:\n\n"
-
-    if current:
-        activity_type, start_time = current
-        start_time_dt = datetime.fromisoformat(start_time)
-        current_duration = int((datetime.now() - start_time_dt).total_seconds())
-
-        activity_name = ACTIVITIES.get(activity_type, activity_type)
-        emoji = get_activity_emoji(activity_type)
-
-        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
-    else:
-        message_text += "Текущая: Нет активной задачи\n\n"
-
-    if timeline_graph and timeline_graph.strip():
-        message_text += timeline_graph
-        message_text += "\n\n"
-
-    message_text += "Рейтинг:\n\n"
-
-    if bar_graph:
-        message_text += bar_graph
-        message_text += f"\n\n📈 Показано за неделю: {hours:02d}:{minutes:02d}:{seconds:02d}"
-    else:
-        message_text += "Нет данных об активностях\n"
-
-    await message.answer(message_text, reply_markup=get_statistics_keyboard())
+    stats_text = await get_week_statistics(user_id)
+    await message.answer(stats_text, reply_markup=get_statistics_keyboard())
 
 
 # ====================== ОБРАБОТЧИКИ НАСТРОЕК ======================
@@ -362,7 +287,6 @@ async def handle_reminders(message: types.Message):
     current_interval = settings['reminder_interval'] if settings else 1800
     notifications_enabled = settings['notifications_enabled'] if settings else True
 
-    from utils import format_interval
     interval_text = format_interval(current_interval)
     status_text = "включены" if notifications_enabled else "выключены"
 
@@ -426,7 +350,6 @@ async def handle_interval_callback(callback: types.CallbackQuery):
         update_user_setting(user_id, 'reminder_interval', interval)
         update_user_setting(user_id, 'notifications_enabled', 1)
 
-        from utils import format_interval
         interval_text = format_interval(interval)
         await callback.message.edit_text(
             f"⏰ Напоминания\nИнтервал: {interval_text}\nСтатус: включены"
@@ -523,7 +446,7 @@ async def main():
     print("=" * 50)
 
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, skip_updates=True)
     except KeyboardInterrupt:
         print("\n🛑 Бот остановлен пользователем")
     finally:
