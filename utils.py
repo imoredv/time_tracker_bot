@@ -503,9 +503,8 @@ def get_timezone_display_name(timezone_str):
     """
     Получение отображаемого имени часового пояса.
     """
-    for display_name, tz_name in timezone_manager.common_timezones.items():
-        if tz_name == timezone_str:
-            return display_name
+    # В этом упрощенном варианте возвращаем код часового пояса
+    # Вы можете добавить маппинг кодов на читаемые названия
     return timezone_str
 
 def format_timezone_info(user_id):
@@ -561,3 +560,130 @@ def format_all_settings(user_id):
 🌍 Часовой пояс: {timezone_display}
 🕒 Локальное время: {format_user_local_time(user_id)}
 """
+
+
+def detect_timezone_by_time_difference(user_hour: int, user_minute: int, server_time: datetime):
+    """
+    Определение часового пояса по разнице времени пользователя и сервера.
+    Возвращает список наиболее вероятных часовых поясов.
+    """
+    import pytz
+
+    # Получаем смещение сервера от UTC
+    try:
+        server_tz = pytz.timezone('UTC')
+        server_utc = server_time.astimezone(server_tz)
+        server_offset = server_utc - server_time.replace(tzinfo=None)
+        server_offset_hours = server_offset.total_seconds() / 3600
+    except:
+        server_offset_hours = 0
+
+    # Рассчитываем предполагаемое смещение пользователя от UTC
+    user_total_minutes = user_hour * 60 + user_minute
+    server_total_minutes = server_time.hour * 60 + server_time.minute
+
+    # Разница в минутах между временем пользователя и серверным
+    time_diff_minutes = user_total_minutes - server_total_minutes
+
+    # Конвертируем в часы (примерное смещение от UTC)
+    estimated_offset_hours = (time_diff_minutes / 60) + server_offset_hours
+
+    # Популярные часовые пояса с их смещениями
+    popular_timezones = {
+        'Europe/Moscow': 3,
+        'Europe/Kiev': 2,
+        'Europe/Minsk': 3,
+        'Asia/Yekaterinburg': 5,
+        'Asia/Omsk': 6,
+        'Asia/Krasnoyarsk': 7,
+        'Asia/Irkutsk': 8,
+        'Asia/Yakutsk': 9,
+        'Asia/Vladivostok': 10,
+        'Europe/London': 0,
+        'Europe/Berlin': 1,
+        'Europe/Paris': 1,
+        'Europe/Madrid': 1,
+        'America/New_York': -5,
+        'America/Los_Angeles': -8,
+        'Asia/Shanghai': 8,
+        'Asia/Tokyo': 9,
+        'Asia/Seoul': 9,
+        'Australia/Sydney': 10,
+    }
+
+    # Находим наиболее подходящие часовые пояса
+    timezone_scores = []
+
+    for tz_name, tz_offset in popular_timezones.items():
+        # Разница между предполагаемым и фактическим смещением
+        offset_diff = abs(estimated_offset_hours - tz_offset)
+        timezone_scores.append((tz_name, tz_offset, offset_diff))
+
+    # Сортируем по наименьшей разнице
+    timezone_scores.sort(key=lambda x: x[2])
+
+    # Возвращаем топ-3 наиболее вероятных часовых пояса
+    return timezone_scores[:3]
+
+def detect_timezone_by_time_difference(user_hour: int, user_minute: int, server_time: datetime):
+    """
+    Определение часового пояса по разнице времени пользователя и сервера.
+    Возвращает список наиболее вероятных часовых поясов.
+    """
+    import pytz
+
+    # Получаем смещение сервера от UTC
+    try:
+        server_tz = pytz.timezone('UTC')
+        server_utc = server_time.astimezone(server_tz)
+        server_offset = server_utc - server_time.replace(tzinfo=None)
+        server_offset_hours = server_offset.total_seconds() / 3600
+    except:
+        server_offset_hours = 0
+
+    # Рассчитываем предполагаемое смещение пользователя от UTC
+    user_total_minutes = user_hour * 60 + user_minute
+    server_total_minutes = server_time.hour * 60 + server_time.minute
+
+    # Разница в минутах между временем пользователя и серверным
+    time_diff_minutes = user_total_minutes - server_total_minutes
+
+    # Конвертируем в часы (примерное смещение от UTC)
+    estimated_offset_hours = (time_diff_minutes / 60) + server_offset_hours
+
+    # Популярные часовые пояса с их смещениями
+    popular_timezones = {
+        'Europe/Moscow': 3,
+        'Europe/Kiev': 2,
+        'Europe/Minsk': 3,
+        'Asia/Yekaterinburg': 5,
+        'Asia/Omsk': 6,
+        'Asia/Krasnoyarsk': 7,
+        'Asia/Irkutsk': 8,
+        'Asia/Yakutsk': 9,
+        'Asia/Vladivostok': 10,
+        'Europe/London': 0,
+        'Europe/Berlin': 1,
+        'Europe/Paris': 1,
+        'Europe/Madrid': 1,
+        'America/New_York': -5,
+        'America/Los_Angeles': -8,
+        'Asia/Shanghai': 8,
+        'Asia/Tokyo': 9,
+        'Asia/Seoul': 9,
+        'Australia/Sydney': 10,
+    }
+
+    # Находим наиболее подходящие часовые пояса
+    timezone_scores = []
+
+    for tz_name, tz_offset in popular_timezones.items():
+        # Разница между предполагаемым и фактическим смещением
+        offset_diff = abs(estimated_offset_hours - tz_offset)
+        timezone_scores.append((tz_name, tz_offset, offset_diff))
+
+    # Сортируем по наименьшей разнице
+    timezone_scores.sort(key=lambda x: x[2])
+
+    # Возвращаем топ-3 наиболее вероятных часовых пояса
+    return timezone_scores[:3]

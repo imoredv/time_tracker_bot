@@ -47,8 +47,8 @@ DB_NAME = 'time_tracker.db'
 # Настройки напоминаний
 DEFAULT_REMINDER_INTERVAL = 1800  # 30 минут по умолчанию
 
-# Часовой пояс по умолчанию
-DEFAULT_TIMEZONE = 'Europe/Moscow'
+# Часовой пояс по умолчанию (Москва)
+DEFAULT_TIMEZONE = 'Russian Standard Time'
 
 # Эмодзи для активностей
 ACTIVITY_EMOJIS = {

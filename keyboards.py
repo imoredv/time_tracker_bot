@@ -112,22 +112,6 @@ def get_settings_keyboard():
     )
     return keyboard
 
-def get_timezone_keyboard():
-    """
-    Клавиатура выбора часового пояса.
-    """
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🌍 Автоопределение"), KeyboardButton(text="🇷🇺 Москва (UTC+3)")],
-            [KeyboardButton(text="🇷🇺 Екатеринбург (UTC+5)"), KeyboardButton(text="🇷🇺 Владивосток (UTC+10)")],
-            [KeyboardButton(text="🇺🇦 Киев (UTC+2)"), KeyboardButton(text="🇧🇾 Минск (UTC+3)")],
-            [KeyboardButton(text="🇪🇺 Лондон (UTC+0)"), KeyboardButton(text="🇺🇸 Нью-Йорк (UTC-5)")],
-            [KeyboardButton(text="⬅️ Назад")]
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Выберите часовой пояс"
-    )
-    return keyboard
 
 def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=True):
     """
@@ -230,17 +214,5 @@ def get_clear_confirm_keyboard():
                 InlineKeyboardButton(text="❌ Нет", callback_data="clear_no")
             ]
         ]
-    )
-    return keyboard
-
-def get_timezone_back_keyboard():
-    """
-    Клавиатура для возврата из настроек часового пояса.
-    """
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="⬅️ Назад")]
-        ],
-        resize_keyboard=True
     )
     return keyboard
