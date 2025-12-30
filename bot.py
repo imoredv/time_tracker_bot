@@ -688,29 +688,60 @@ async def handle_timezone(message: Message):
 @dp.message(F.text == "🌍 Автоопределение")
 async def handle_auto_timezone(message: Message):
     """
-    Автоопределение часового пояса с учетом особенностей ботахост.ру.
+    Автоопределение часового пояса.
     """
     user_id = message.from_user.id
 
     try:
-        # На ботахост.ру автоопределение по IP показывает серверный часовой пояс
-        # Поэтому предлагаем пользователю выбрать вручную
-        response = (
-            "⚠️ На ботахост.ру автоопределение показывает часовой пояс сервера.\n\n"
-            "Пожалуйста, выберите ваш часовой пояс вручную из списка ниже:\n\n"
-            "• 🇷🇺 Москва (UTC+3) - для центральной России\n"
-            "• 🇷🇺 Екатеринбург (UTC+5) - для Урала\n"
-            "• 🇷🇺 Красноярск (UTC+7) - для Сибири\n"
-            "• 🇺🇦 Киев (UTC+2) - для Украины\n"
-            "• 🇧🇾 Минск (UTC+3) - для Беларуси\n\n"
-            "Или выберите другой из списка:"
-        )
+        # Пробуем определить по IP
+        auto_timezone = timezone_manager.detect_by_ip(force_refresh=True)  # Принудительно обновляем
 
-        await message.answer(response, reply_markup=get_timezone_keyboard())
+        # Проверяем, популярный ли это часовой пояс для пользователей
+        popular_timezones = [
+            'Europe/Moscow', 'Europe/Kiev', 'Europe/Minsk',
+            'Asia/Yekaterinburg', 'Asia/Novosibirsk', 'Asia/Krasnoyarsk',
+            'Europe/London', 'America/New_York', 'Europe/Berlin',
+            'Europe/Paris', 'Europe/Madrid'
+        ]
+
+        timezone_display = get_timezone_display_name(auto_timezone)
+        local_time = format_user_local_time(user_id)
+
+        # Если часовой пояс популярный - используем его
+        if auto_timezone in popular_timezones:
+            update_user_timezone(user_id, auto_timezone)
+
+            response = (
+                f"✅ Часовой пояс обновлен!\n\n"
+                f"• {timezone_display}\n"
+                f"• Локальное время: {local_time}"
+            )
+
+            await message.answer(response, reply_markup=get_settings_keyboard())
+        else:
+            # Если часовой пояс не популярный, предлагаем выбрать вручную
+            response = (
+                f"Определен часовой пояс: {timezone_display}\n"
+                f"Локальное время: {local_time}\n\n"
+                f"Это ваш часовой пояс? Если нет, выберите вручную:"
+            )
+
+            # Создаем клавиатуру с кнопкой подтверждения и выбора
+            keyboard = ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text=f"✅ Да, это {timezone_display}")],
+                    [KeyboardButton(text="❌ Нет, выбрать другой")],
+                    [KeyboardButton(text="⬅️ Назад")]
+                ],
+                resize_keyboard=True
+            )
+
+            await message.answer(response, reply_markup=keyboard)
+            # Можно сохранить предложенный часовой пояс в состоянии FSM
 
     except Exception as e:
-        response = f"❌ Не удалось определить часовой пояс: {e}"
-        await message.answer(response, reply_markup=get_settings_keyboard())
+        response = f"❌ Не удалось определить часовой пояс: {e}\n\nПожалуйста, выберите вручную:"
+        await message.answer(response, reply_markup=get_timezone_keyboard())
 
 # Обработка выбора часового пояса
 @dp.message(F.text.in_(list(timezone_manager.common_timezones.keys())))
