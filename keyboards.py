@@ -7,7 +7,7 @@ from timezone_manager import timezone_manager
 
 def get_main_keyboard():
     """
-    Основная клавиатура - активности.
+    Основная клавиатура - активности..
     """
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
