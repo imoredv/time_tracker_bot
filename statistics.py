@@ -105,9 +105,10 @@ async def get_daily_statistics(user_id):
     hours_today = total_seconds_today // 3600
     minutes_today = (total_seconds_today % 3600) // 60
 
-    # Форматируем общее время
-    message_text += f"📈 Всего за сегодня: {hours_today}:{minutes_today:02d}\n"
-    message_text += f"📈 Всего за 24 часа: {hours_24h}:{minutes_24h:02d}"
+    # ЗАКОММЕНТИРОВАН ВЫВОД ОБЩЕГО ВРЕМЕНИ
+    # # Форматируем общее время
+    # message_text += f"📈 Всего за сегодня: {hours_today}:{minutes_today:02d}\n"
+    # message_text += f"📈 Всего за 24 часа: {hours_24h}:{minutes_24h:02d}"
 
     return message_text
 
@@ -153,7 +154,8 @@ async def get_week_statistics(user_id):
 
     if bar_graph:
         message_text += bar_graph
-        message_text += f"\n\n📈 Показано за неделю: {hours}:{minutes:02d}"
+        # ЗАКОММЕНТИРОВАН ВЫВОД ОБЩЕГО ВРЕМЕНИ ЗА НЕДЕЛЮ
+        # message_text += f"\n\n📈 Показано за неделю: {hours}:{minutes:02d}"
     else:
         message_text += "Нет данных об активностях\n"
 
