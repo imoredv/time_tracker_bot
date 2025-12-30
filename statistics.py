@@ -26,7 +26,7 @@ async def get_daily_statistics(user_id):
     # Получаем сегодняшнюю дату в часовом поясе пользователя
     today_date = get_user_current_date(user_id)
 
-    # Статистика за 2 дня для графиков
+    # Статистика за 2 дня для графиков (вчера и позавчера)
     hourly_stats = get_hourly_activity_stats(user_id, 2)
 
     # Статистика за 24 часа
@@ -35,8 +35,9 @@ async def get_daily_statistics(user_id):
     # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
     stats_today = get_daily_stats_sorted(user_id, today_date)
 
-    # Отладочный вывод (можно удалить после проверки)
+    # Отладочный вывод
     print(f"DEBUG: user_id={user_id}, today_date={today_date}")
+    print(f"DEBUG: current_date={datetime.now().date()}")
     print(f"DEBUG: stats_today={stats_today}")
 
     # Текущая активность
@@ -45,7 +46,7 @@ async def get_daily_statistics(user_id):
     # Форматирование
     message_text = "📊 Суточная статистика:\n\n"
 
-    # График активности за 2 дня
+    # График активности за 2 дня (вчера и позавчера)
     timeline_graph = generate_activity_graph_with_dates(hourly_stats, 2)
     if timeline_graph and timeline_graph.strip():
         message_text += timeline_graph

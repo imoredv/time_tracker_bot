@@ -187,6 +187,7 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
     """
     Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
     Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
+    Исправлена логика расчета дат.
     """
     if not stats_by_hour or days <= 0:
         return ""
@@ -209,9 +210,11 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
     # Получаем текущую дату для расчета дат дней
     current_date = datetime.now().date()
 
+    # Правильный расчет дат: последний день - вчера, предпоследний - позавчера
     for day_idx, day_stats in enumerate(stats_by_hour):
         # Рассчитываем дату для этого дня
-        day_date = current_date - timedelta(days=days - 1 - day_idx)
+        # day_idx=0 -> вчера, day_idx=1 -> позавчера и т.д.
+        day_date = current_date - timedelta(days=(days - day_idx))
 
         # Проверяем, есть ли активность в этом дне
         day_has_activity = False
