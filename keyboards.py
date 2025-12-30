@@ -216,3 +216,239 @@ def get_clear_confirm_keyboard():
         ]
     )
     return keyboard
+
+def get_enhanced_timezone_keyboard():
+    """
+    Улучшенная клавиатура для выбора часового пояса.
+    """
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔍 Поиск по городу", callback_data="tz_search"),
+            InlineKeyboardButton(text="⏱️ Проверить время", callback_data="tz_check_time")
+        ],
+        [
+            InlineKeyboardButton(text="🌍 По странам", callback_data="tz_search_country"),
+            InlineKeyboardButton(text="📋 Полный список", callback_data="tz_show_all")
+        ],
+        [
+            InlineKeyboardButton(text="🇷🇺 Россия", callback_data="tz_country_rus"),
+            InlineKeyboardButton(text="🇺🇸 США", callback_data="tz_country_usa")
+        ],
+        [
+            InlineKeyboardButton(text="🇪🇺 Европа", callback_data="tz_group_Европа"),
+            InlineKeyboardButton(text="🌏 Азия", callback_data="tz_group_Азия")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_back_to_settings")
+        ]
+    ])
+    return keyboard
+
+def get_enhanced_timezone_keyboard():
+    """
+    Улучшенная клавиатура для выбора часового пояса.
+    """
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔍 Поиск по городу", callback_data="tz_search"),
+            InlineKeyboardButton(text="⏱️ Проверить время", callback_data="tz_check_time")
+        ],
+        [
+            InlineKeyboardButton(text="🌍 По странам", callback_data="tz_search_country"),
+            InlineKeyboardButton(text="📋 Полный список", callback_data="tz_show_all")
+        ],
+        [
+            InlineKeyboardButton(text="🇷🇺 Россия", callback_data="tz_country_rus"),
+            InlineKeyboardButton(text="🇺🇸 США", callback_data="tz_country_usa")
+        ],
+        [
+            InlineKeyboardButton(text="🇪🇺 Европа", callback_data="tz_group_Европа"),
+            InlineKeyboardButton(text="🌏 Азия", callback_data="tz_group_Азия")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_back_to_settings")
+        ]
+    ])
+    return keyboard
+
+
+def get_simple_start_timezone_keyboard():
+    """
+    Простая клавиатура для выбора часового пояса при старте.
+    """
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📍 Ввести город", callback_data="tz_city_input"),
+                InlineKeyboardButton(text="⏱️ Ввести UTC", callback_data="tz_utc_input")
+            ],
+            [
+                InlineKeyboardButton(text="🇷🇺 Москва", callback_data="tz_select_Russian Standard Time"),
+                InlineKeyboardButton(text="🇺🇦 Киев", callback_data="tz_select_FLE Standard Time")
+            ],
+            [
+                InlineKeyboardButton(text="🇧🇾 Минск", callback_data="tz_select_Belarus Standard Time"),
+                InlineKeyboardButton(text="🇺🇸 Нью-Йорк", callback_data="tz_select_Eastern Standard Time")
+            ],
+            [
+                InlineKeyboardButton(text="🇪🇺 Лондон", callback_data="tz_select_GMT Standard Time"),
+                InlineKeyboardButton(text="🗺️ Все пояса", callback_data="tz_show_all")
+            ]
+        ]
+    )
+    return keyboard
+
+
+def get_timezone_main_keyboard():
+    """
+    Основная клавиатура для выбора часового пояса.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔍 Найти город", callback_data="tz_search_city"),
+                InlineKeyboardButton(text="⏱️ Смещение UTC", callback_data="tz_search_offset")
+            ],
+            [
+                InlineKeyboardButton(text="🕐 Ввести время", callback_data="tz_input_time"),
+                InlineKeyboardButton(text="🌍 По странам", callback_data="tz_search_country")
+            ],
+            [
+                InlineKeyboardButton(text="🇷🇺 Россия", callback_data="tz_country_rus"),
+                InlineKeyboardButton(text="🇺🇸 США", callback_data="tz_country_usa")
+            ],
+            [
+                InlineKeyboardButton(text="🇪🇺 Европа", callback_data="tz_group_Европа"),
+                InlineKeyboardButton(text="🌏 Азия", callback_data="tz_group_Азия")
+            ],
+            [
+                InlineKeyboardButton(text="📋 Полный список", callback_data="tz_show_all"),
+                InlineKeyboardButton(text="🚀 Москва (UTC+3)", callback_data="tz_select_Russian Standard Time")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="tz_cancel")
+            ]
+        ]
+    )
+
+
+def get_timezone_search_keyboard():
+    """
+    Клавиатура для поиска часового пояса.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📍 Поиск по городу", callback_data="tz_search_city"),
+            InlineKeyboardButton(text="⏱️ По смещению UTC", callback_data="tz_search_offset")
+        ],
+        [
+            InlineKeyboardButton(text="🌍 По странам", callback_data="tz_search_country"),
+            InlineKeyboardButton(text="📋 Полный список", callback_data="tz_show_all")
+        ],
+        [
+            InlineKeyboardButton(text="🕐 Проверить по времени", callback_data="tz_input_time")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_cancel")
+        ]
+    ])
+
+
+def get_timezone_with_time_keyboard():
+    """
+    Клавиатура для выбора часового пояса с проверкой времени.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇷🇺 Россия", callback_data="tz_country_rus"),
+            InlineKeyboardButton(text="🇪🇺 Европа", callback_data="tz_country_eu")
+        ],
+        [
+            InlineKeyboardButton(text="🇺🇸 США/Канада", callback_data="tz_country_usa"),
+            InlineKeyboardButton(text="🌏 Азия", callback_data="tz_country_asia")
+        ],
+        [
+            InlineKeyboardButton(text="🔍 Поиск", callback_data="tz_search_again"),
+            InlineKeyboardButton(text="📋 Список", callback_data="tz_show_all")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_cancel")
+        ]
+    ])
+
+
+# В keyboards.py добавить
+def get_simple_timezone_keyboard():
+    """Простая клавиатура часового пояса."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📍 Город", callback_data="tz_search_city"),
+            InlineKeyboardButton(text="⏱️ UTC", callback_data="tz_search_offset")
+        ],
+        [
+            InlineKeyboardButton(text="🗺️ Список", callback_data="tz_show_offsets")
+        ],
+        [
+            InlineKeyboardButton(text="🇷🇺 Москва", callback_data="tz_select_Europe/Moscow"),
+            InlineKeyboardButton(text="🇺🇦 Киев", callback_data="tz_select_Europe/Kiev")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_back_to_settings")
+        ]
+    ])
+
+def get_simple_settings_timezone_keyboard():
+    """
+    Простая клавиатура для смены часового пояса в настройках.
+    """
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📍 Ввести город", callback_data="tz_city_input"),
+                InlineKeyboardButton(text="⏱️ Ввести UTC", callback_data="tz_utc_input")
+            ],
+            [
+                InlineKeyboardButton(text="🇷🇺 Москва", callback_data="tz_select_Russian Standard Time"),
+                InlineKeyboardButton(text="🇺🇦 Киев", callback_data="tz_select_FLE Standard Time")
+            ],
+            [
+                InlineKeyboardButton(text="🇧🇾 Минск", callback_data="tz_select_Belarus Standard Time"),
+                InlineKeyboardButton(text="🇺🇸 Нью-Йорк", callback_data="tz_select_Eastern Standard Time")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_back_settings")
+            ]
+        ]
+    )
+    return keyboard
+
+def get_utc_offsets_keyboard():
+    """
+    Клавиатура с выбором смещения UTC.
+    """
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="UTC-12", callback_data="tz_utc_-12"),
+                InlineKeyboardButton(text="UTC-8", callback_data="tz_utc_-8"),
+                InlineKeyboardButton(text="UTC-5", callback_data="tz_utc_-5")
+            ],
+            [
+                InlineKeyboardButton(text="UTC-3", callback_data="tz_utc_-3"),
+                InlineKeyboardButton(text="UTC+0", callback_data="tz_utc_0"),
+                InlineKeyboardButton(text="UTC+3", callback_data="tz_utc_+3")
+            ],
+            [
+                InlineKeyboardButton(text="UTC+5", callback_data="tz_utc_+5"),
+                InlineKeyboardButton(text="UTC+8", callback_data="tz_utc_+8"),
+                InlineKeyboardButton(text="UTC+12", callback_data="tz_utc_+12")
+            ],
+            [
+                InlineKeyboardButton(text="🔍 Поиск", callback_data="tz_search_again"),
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_back_to_simple")
+            ]
+        ]
+    )
+    return keyboard
