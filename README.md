@@ -1,4 +1,4 @@
-# Time Tracker Bot v4.0
+# Time Tracker Bot v4.0.
 
 Telegram бот для учета времени с графиками статистики и умными напоминаниями.
 
