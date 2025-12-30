@@ -14,6 +14,7 @@ from config import ACTIVITIES
 from utils import (
     get_activity_emoji,
     format_duration_simple,
+    format_duration_for_statistics,
     generate_activity_graph_with_dates,
     generate_bar_graph_period
 )
@@ -145,10 +146,9 @@ async def get_week_statistics(user_id):
         current_duration = int((datetime.now() - start_time_dt).total_seconds())
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
-        # Форматируем без секунд
-        hours_current = current_duration // 3600
-        minutes_current = (current_duration % 3600) // 60
-        message_text += f"Текущая: {emoji} {activity_name} {hours_current}:{minutes_current:02d}\n\n"
+        # Используем новую функцию форматирования
+        time_str = format_duration_for_statistics(current_duration)
+        message_text += f"Текущая: {emoji} {activity_name} {time_str}\n\n"
     else:
         message_text += "Текущая: Нет активной задачи\n\n"
 

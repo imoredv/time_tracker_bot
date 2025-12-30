@@ -242,21 +242,17 @@ class ReminderManager:
                 activity_name = ACTIVITIES.get(activity_type, activity_type)
                 emoji = get_activity_emoji(activity_type)
 
-                # Рассчитываем время
+                # Рассчитываем время с использованием нового формата
                 start_time_dt = datetime.fromisoformat(start_time)
                 duration = int((datetime.now() - start_time_dt).total_seconds())
 
-                # Форматируем время
-                hours = duration // 3600
-                minutes = (duration % 3600) // 60
+                # Форматируем как 19м:39с
+                minutes = duration // 60
                 seconds = duration % 60
-
-                if hours > 0:
-                    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                elif minutes > 0:
-                    time_str = f"{minutes:02d}:{seconds:02d}"
+                if minutes > 0:
+                    time_str = f"{minutes}м:{seconds:02d}с"
                 else:
-                    time_str = f"{seconds:02d} сек"
+                    time_str = f"{seconds}с"
 
                 # Отправляем сообщение с кнопками
                 await self.bot.send_message(

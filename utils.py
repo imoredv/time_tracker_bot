@@ -15,17 +15,33 @@ def get_activity_emoji(activity_type):
 
 
 def format_duration_simple(seconds):
-    """Форматирование времени."""
+    """Форматирование времени с явным указанием единиц."""
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
-    seconds = seconds % 60
+    seconds_remain = seconds % 60
 
     if hours > 0:
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        # Часы:минуты (например: 2:15ч)
+        return f"{hours}:{minutes:02d}ч"
     elif minutes > 0:
-        return f"{minutes:02d}:{seconds:02d}"
+        # Минуты:секунды (например: 14:42с)
+        return f"{minutes:02d}:{seconds_remain:02d}с"
     else:
-        return f"{seconds:02d} сек"
+        # Только секунды
+        return f"{seconds_remain}с"
+
+
+def format_duration_for_statistics(seconds):
+    """Форматирование времени для статистики (часы:минуты в формате ЧЧч:ММм)."""
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+
+    if hours > 0:
+        # Часы:минуты (например: 6ч:11м)
+        return f"{hours}ч:{minutes:02d}м"
+    else:
+        # Только минуты (например: 13м)
+        return f"{minutes}м"
 
 
 def format_interval(seconds):
@@ -43,9 +59,9 @@ def format_interval(seconds):
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         if minutes > 0:
-            return f"{hours} час {minutes} мин"
+            return f"{hours}ч {minutes}м"
         else:
-            return f"{hours} часов"
+            return f"{hours}ч"
 
 
 def get_user_local_time(user_id):
@@ -282,12 +298,8 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         else:
             bar = "█" * width
 
-        # Форматируем время (без секунд)
-        total_hours = seconds // 3600
-        total_minutes = (seconds % 3600) // 60
-
-        # Форматируем время в формате "9:25" (без ведущих нулей у часов)
-        time_str = f"{total_hours}:{total_minutes:02d}"
+        # Форматируем время с явными единицами (новый формат: 6ч:11м)
+        time_str = format_duration_for_statistics(seconds)
 
         # Добавляем пометку текущей активности только если user_id передан
         # Для статистики за 24 часа user_id=None, поэтому зеленая точка не добавляется

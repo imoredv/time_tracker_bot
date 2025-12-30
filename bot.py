@@ -191,8 +191,13 @@ async def handle_activity(message: types.Message, state: FSMContext):
         current_time = datetime.now()
         duration = int((current_time - start_time).total_seconds())
 
+        # Форматируем время как 19м:39с
+        minutes = duration // 60
+        seconds = duration % 60
+        time_str = f"{minutes}м:{seconds:02d}с"
+
         await message.answer(
-            f"{emoji} {name} продолжается\n{format_duration_simple(duration)}",
+            f"{emoji} {name} продолжается\n{time_str}",
             reply_markup=get_main_keyboard_with_current(user_id)
         )
         return
@@ -211,12 +216,17 @@ async def handle_activity(message: types.Message, state: FSMContext):
         end_time = datetime.now()
         duration = int((end_time - start_time).total_seconds())
 
-        response += f"{emoji} {name} стоп\n{format_duration_simple(duration)}\n\n"
+        # Форматируем время как 19м:15с
+        minutes = duration // 60
+        seconds = duration % 60
+        time_str = f"{minutes}м:{seconds:02d}с"
+
+        response += f"{emoji} {name} стоп\n{time_str}\n\n"
 
     # Новая активность
     emoji = get_activity_emoji(act_type)
     name = ACTIVITIES.get(act_type, act_type)
-    response += f"{emoji} {name} старт\n00:00:00\n\n"
+    response += f"{emoji} {name} старт\n00м:00с\n\n"
 
     # Предлагаем выбрать интервал уведомлений
     response += "📅 Выберите интервал уведомлений для этой активности:"
@@ -354,7 +364,12 @@ async def handle_back(message: types.Message):
         current_time = datetime.now()
         duration = int((current_time - start_time_dt).total_seconds())
 
-        message_text = f"{emoji} {name} {format_duration_simple(duration)}"
+        # Форматируем время как 19м:39с
+        minutes = duration // 60
+        seconds = duration % 60
+        time_str = f"{minutes}м:{seconds:02d}с"
+
+        message_text = f"{emoji} {name} {time_str}"
     else:
         message_text = "Нет активной задачи"
 
@@ -441,8 +456,9 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
 
+        # Обновляем формат времени на 00м:00с
         await callback.message.edit_text(
-            f"{emoji} {activity_name}\n00:00:00\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
+            f"{emoji} {activity_name}\n00м:00с\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
         )
         await callback.answer(f"Интервал: {interval_minutes} мин")
 
