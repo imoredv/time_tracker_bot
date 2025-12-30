@@ -35,7 +35,7 @@ async def get_daily_statistics(user_id):
     # Статистика с начала суток
     stats_today = get_daily_stats_sorted(user_id, today_date)
 
-    # Текущая активность (не показываем здесь, покажем в кнопке "Назад")
+    # Текущая активность
     current = get_current_activity(user_id)
 
     # Форматирование
@@ -53,9 +53,9 @@ async def get_daily_statistics(user_id):
     # Фильтруем активности больше 1 минуты для 24 часов
     filtered_24h = [(act_type, duration) for act_type, duration in activity_stats_24h if duration >= 60]
 
-    # Формируем бар-граф для отфильтрованных активностей
+    # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
     if filtered_24h:
-        bar_graph_24h = generate_bar_graph_period(filtered_24h, user_id)
+        bar_graph_24h = generate_bar_graph_period(filtered_24h, None)  # Передаем None чтобы убрать зеленую точку
         if bar_graph_24h:
             message_text += bar_graph_24h
     else:
@@ -74,10 +74,10 @@ async def get_daily_statistics(user_id):
         if bar_graph_today:
             message_text += bar_graph_today
 
-    # Добавляем список незадействованных активностей
+    # Добавляем список незадействованных активностей с ❌
     unused_activities = []
     for act_type in ACTIVITIES.keys():
-        # Проверяем, есть ли активность в статистике сегодня
+        # Проверяем, есть ли активность в статистике сегодня (больше 1 минуты)
         found = False
         for act_type_stat, duration in stats_today:
             if act_type_stat == act_type and duration >= 60:
@@ -85,14 +85,13 @@ async def get_daily_statistics(user_id):
                 break
 
         if not found:
-            emoji = get_activity_emoji(act_type)
             name = ACTIVITIES.get(act_type, act_type)
-            unused_activities.append(f"{emoji} {name}")
+            unused_activities.append(name)
 
     if unused_activities:
         if filtered_today:
             message_text += "\n"
-        message_text += ", ".join(unused_activities) + " 📌"
+        message_text += "❌ " + ", ".join(unused_activities)
 
     message_text += "\n\n"
 

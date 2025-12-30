@@ -305,11 +305,12 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         total_hours = seconds // 3600
         total_minutes = (seconds % 3600) // 60
 
-        # Форматируем время в формате "5:10"
+        # Форматируем время в формате "9:25" (без ведущих нулей у часов)
         time_str = f"{total_hours}:{total_minutes:02d}"
 
-        # Добавляем пометку текущей активности
-        if activity_type == current_activity:
+        # Добавляем пометку текущей активности только если user_id передан
+        # Для статистики за 24 часа user_id=None, поэтому зеленая точка не добавляется
+        if user_id and activity_type == current_activity:
             bars.append(f"{bar} {emoji} {activity_name} {time_str} 🟢")
         else:
             bars.append(f"{bar} {emoji} {activity_name} {time_str}")
