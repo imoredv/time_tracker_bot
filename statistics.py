@@ -7,7 +7,7 @@ from database import (
     get_hourly_activity_stats,
     get_total_stats_by_activity,
     get_current_activity,
-    get_daily_stats_sorted,
+    get_daily_stats_sorted,  # Импорт добавлен
     get_user_current_date
 )
 from config import ACTIVITIES
@@ -32,8 +32,12 @@ async def get_daily_statistics(user_id):
     # Статистика за 24 часа
     activity_stats_24h = get_total_stats_by_activity(user_id, 1)
 
-    # Статистика с начала суток
+    # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
     stats_today = get_daily_stats_sorted(user_id, today_date)
+
+    # Отладочный вывод (можно удалить после проверки)
+    print(f"DEBUG: user_id={user_id}, today_date={today_date}")
+    print(f"DEBUG: stats_today={stats_today}")
 
     # Текущая активность
     current = get_current_activity(user_id)
@@ -105,11 +109,6 @@ async def get_daily_statistics(user_id):
     hours_today = total_seconds_today // 3600
     minutes_today = (total_seconds_today % 3600) // 60
 
-    # ЗАКОММЕНТИРОВАН ВЫВОД ОБЩЕГО ВРЕМЕНИ
-    # # Форматируем общее время
-    # message_text += f"📈 Всего за сегодня: {hours_today}:{minutes_today:02d}\n"
-    # message_text += f"📈 Всего за 24 часа: {hours_24h}:{minutes_24h:02d}"
-
     return message_text
 
 
@@ -154,8 +153,6 @@ async def get_week_statistics(user_id):
 
     if bar_graph:
         message_text += bar_graph
-        # ЗАКОММЕНТИРОВАН ВЫВОД ОБЩЕГО ВРЕМЕНИ ЗА НЕДЕЛЮ
-        # message_text += f"\n\n📈 Показано за неделю: {hours}:{minutes:02d}"
     else:
         message_text += "Нет данных об активностях\n"
 

@@ -1,5 +1,5 @@
 """
-Time Tracker Bot с поддержкой часовых поясов.
+Time Tracker Bot с поддержкой часовых поясов..
 Упрощенная версия.
 """
 
@@ -234,9 +234,26 @@ async def handle_activity(message: types.Message, state: FSMContext):
 @dp.message(F.text == "📊 Статистика")
 async def handle_statistics(message: types.Message):
     """Статистика за последние 24 часа И с начала суток."""
-    user_id = message.from_user.id
-    stats_text = await get_daily_statistics(user_id)
-    await message.answer(stats_text, reply_markup=get_statistics_keyboard())
+    try:
+        user_id = message.from_user.id
+        print(f"DEBUG: Получен запрос статистики от пользователя {user_id}")
+
+        # Получаем статистику
+        stats_text = await get_daily_statistics(user_id)
+
+        # Отправляем результат с клавиатурой статистики
+        await message.answer(stats_text, reply_markup=get_statistics_keyboard())
+
+    except Exception as e:
+        print(f"❌ Ошибка при получении статистики: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Отправляем сообщение об ошибке с основной клавиатурой
+        await message.answer(
+            "⚠️ Произошла ошибка при получении статистики. Попробуйте позже.",
+            reply_markup=get_main_keyboard_with_current(message.from_user.id)
+        )
 
 
 @dp.message(F.text == "📅 Неделя")

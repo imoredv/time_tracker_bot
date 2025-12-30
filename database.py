@@ -4,7 +4,7 @@
 
 import sqlite3
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from config import DB_NAME
 
 def get_db_path():
@@ -287,55 +287,110 @@ def get_stats_last_24_hours(user_id):
     conn.close()
     return result
 
-def get_daily_stats(user_id, date=None):
+def get_daily_stats(user_id, target_date=None):
     """
-    Статистика за день с учетом текущей активности.
+    Статистика за день с учетом текущей активности и часового пояса пользователя.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    if date is None:
-        date = datetime.now().date()
+    # Получаем часовой пояс пользователя
+    timezone_code = get_user_timezone(user_id)
 
+    # Маппинг часовых поясов для pytz
+    tz_mapping = {
+        'Russian Standard Time': 'Europe/Moscow',
+        'FLE Standard Time': 'Europe/Kiev',
+        'Belarus Standard Time': 'Europe/Minsk',
+        'West Asia Standard Time': 'Asia/Yekaterinburg',
+        'Central Asia Standard Time': 'Asia/Almaty',
+        'SE Asia Standard Time': 'Asia/Bangkok',
+        'China Standard Time': 'Asia/Shanghai',
+        'Tokyo Standard Time': 'Asia/Tokyo',
+        'GMT Standard Time': 'Europe/London',
+        'W. Europe Standard Time': 'Europe/Berlin',
+        'Eastern Standard Time': 'America/New_York',
+        'Pacific Standard Time': 'America/Los_Angeles',
+        'UTC': 'UTC',
+    }
+
+    user_tz_name = tz_mapping.get(timezone_code, 'UTC')
+
+    # Определяем целевую дату
+    try:
+        import pytz
+        user_tz = pytz.timezone(user_tz_name)
+        user_now = datetime.now(user_tz)
+        if target_date is None:
+            target_date = user_now.date()
+        elif isinstance(target_date, date):
+            target_date = target_date
+        else:
+            target_date = user_now.date()
+    except Exception as e:
+        print(f"Ошибка при определении даты: {e}")
+        user_now = datetime.utcnow()
+        if target_date is None:
+            target_date = user_now.date()
+        elif isinstance(target_date, date):
+            target_date = target_date
+        else:
+            target_date = user_now.date()
+
+    # Получаем все активности пользователя
     cursor.execute('''
-        SELECT activity_type, SUM(duration_seconds)
+        SELECT activity_type, start_time, duration_seconds
         FROM activities 
-        WHERE user_id = ? 
-          AND date(start_time) = date(?)
-          AND duration_seconds IS NOT NULL
-        GROUP BY activity_type
-    ''', (user_id, date.isoformat()))
+        WHERE user_id = ?
+        ORDER BY start_time
+    ''', (user_id,))
 
-    completed_stats = cursor.fetchall()
-
-    cursor.execute('''
-        SELECT activity_type, start_time 
-        FROM activities 
-        WHERE user_id = ? 
-          AND end_time IS NULL
-          AND date(start_time) = date(?)
-        LIMIT 1
-    ''', (user_id, date.isoformat()))
-
-    current_activity = cursor.fetchone()
+    all_activities = cursor.fetchall()
     conn.close()
 
     stats_dict = {}
 
-    for activity_type, duration in completed_stats:
-        stats_dict[activity_type] = duration
+    for activity_type, start_time_str, duration_seconds in all_activities:
+        start_time_utc = datetime.fromisoformat(start_time_str)
 
-    if current_activity:
-        activity_type, start_time_str = current_activity
-        start_time = datetime.fromisoformat(start_time_str)
-        current_time = datetime.now()
-        current_duration = int((current_time - start_time).total_seconds())
+        try:
+            # Конвертируем в локальное время пользователя
+            if 'user_tz' in locals():
+                start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+            else:
+                start_time_local = start_time_utc
+        except:
+            start_time_local = start_time_utc
 
-        if activity_type in stats_dict:
-            stats_dict[activity_type] += current_duration
+        # Проверяем, относится ли активность к нужному дню
+        if start_time_local.date() != target_date:
+            continue
+
+        if duration_seconds is not None:
+            # Завершенная активность
+            if activity_type in stats_dict:
+                stats_dict[activity_type] += duration_seconds
+            else:
+                stats_dict[activity_type] = duration_seconds
         else:
-            stats_dict[activity_type] = current_duration
+            # Текущая активность (не завершена)
+            current_time = datetime.now()
+            try:
+                if 'user_tz' in locals():
+                    current_time_local = current_time.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                else:
+                    current_time_local = current_time
+            except:
+                current_time_local = current_time
+
+            # Проверяем, началась ли текущая активность в этот же день
+            if start_time_local.date() == current_time_local.date():
+                current_duration = int((current_time_local - start_time_local).total_seconds())
+                if activity_type in stats_dict:
+                    stats_dict[activity_type] += current_duration
+                else:
+                    stats_dict[activity_type] = current_duration
 
     from config import ACTIVITIES
     result = []
@@ -888,11 +943,11 @@ def debug_user_settings(user_id):
         """
     return f"❌ Настройки пользователя {user_id} не найдены"
 
-def get_daily_stats_sorted(user_id, date=None):
+def get_daily_stats_sorted(user_id, target_date=None):
     """
-    Статистика за день с учетом текущей активности, отсортированная по убыванию времени.
+    Статистика за день с учетом текущей активности и часового пояса, отсортированная по убыванию времени.
     """
-    stats = get_daily_stats(user_id, date)
+    stats = get_daily_stats(user_id, target_date)
     # Сортируем по убыванию времени
     return sorted(stats, key=lambda x: x[1], reverse=True)
 
