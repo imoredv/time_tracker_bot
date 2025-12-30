@@ -47,7 +47,7 @@ from utils import (
 )
 
 # Создаем бота и диспетчер
-bot = Bot(token=BOT_TOKEN, timeout=60)  # Увеличиваем timeout до 60 секунд
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 reminder_manager = ReminderManager(bot)
 
@@ -1173,12 +1173,8 @@ async def main():
     print("=" * 50)
 
     try:
-        # Настройка polling с обработкой ошибок
-        await dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
-            skip_updates=True
-        )
+        # Простой запуск polling
+        await dp.start_polling(bot)
     except KeyboardInterrupt:
         print("\n🛑 Бот остановлен пользователем (Ctrl+C)")
     except Exception as e:
