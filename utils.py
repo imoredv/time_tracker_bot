@@ -274,16 +274,28 @@ def generate_bar_graph_period(activity_stats, user_id=None):
 
     sorted_stats = sorted(filtered_stats, key=lambda x: x[1], reverse=True)
 
-    bars = []
+    lines = []
 
     # Находим максимальное время
     max_duration = sorted_stats[0][1] if sorted_stats else 1
 
-    for activity_type, seconds in sorted_stats:
+    for i, (activity_type, seconds) in enumerate(sorted_stats):
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
 
-        # Рассчитываем ширину
+        # Форматируем время с явными единицами (новый формат: 6ч:11м)
+        time_str = format_duration_for_statistics(seconds)
+
+        # Определяем, текущая ли это активность
+        is_current = user_id and activity_type == current_activity
+
+        # Строка: эмодзи, название, время и зеленая точка если текущая
+        activity_line = f"{emoji} {activity_name} {time_str}"
+        if is_current:
+            activity_line += " 🟢"
+        lines.append(activity_line)
+
+        # Строка с бар-графом
         width_fraction = seconds / max_duration
         width = int(width_fraction * 12)
 
@@ -294,21 +306,13 @@ def generate_bar_graph_period(activity_stats, user_id=None):
                 width = 0
 
         if width == 0:
-            bar = "▌"
+            bar_line = "▌"
         else:
-            bar = "█" * width
+            bar_line = "█" * width
 
-        # Форматируем время с явными единицами (новый формат: 6ч:11м)
-        time_str = format_duration_for_statistics(seconds)
+        lines.append(bar_line)
 
-        # Добавляем пометку текущей активности только если user_id передан
-        # Для статистики за 24 часа user_id=None, поэтому зеленая точка не добавляется
-        if user_id and activity_type == current_activity:
-            bars.append(f"{bar} {emoji} {activity_name} {time_str} 🟢")
-        else:
-            bars.append(f"{bar} {emoji} {activity_name} {time_str}")
-
-    return "\n".join(bars)
+    return "\n".join(lines)
 
 
 def get_timezone_offset(timezone_code):

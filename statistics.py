@@ -37,13 +37,6 @@ async def get_daily_statistics(user_id):
         # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
         stats_today = get_daily_stats_sorted(user_id, today_date)
 
-        # Отладочный вывод
-        print(f"DEBUG: user_id={user_id}, today_date={today_date}")
-        if hourly_stats_with_dates:
-            print(f"DEBUG: hourly_stats dates: {[date for date, _ in hourly_stats_with_dates]}")
-        else:
-            print(f"DEBUG: hourly_stats_with_dates is empty")
-
         # Текущая активность
         current = get_current_activity(user_id)
 
@@ -105,11 +98,7 @@ async def get_daily_statistics(user_id):
                 unused_activities.append(name)
 
         if unused_activities:
-            if filtered_today:
-                message_text += "\n"
-            message_text += "❌ " + ", ".join(unused_activities)
-
-        message_text += "\n\n"
+            message_text += "\n\n❌ " + ", ".join(unused_activities)
 
         return message_text
 
