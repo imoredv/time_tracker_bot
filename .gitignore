@@ -12,7 +12,7 @@ __pycache__/
 *.py[cod]
 
 # Файл базы данных SQLite (если есть)
-*.db
+
 *.sqlite3
 
 # Конфигурация IDE (PyCharm)
