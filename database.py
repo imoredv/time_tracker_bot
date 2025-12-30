@@ -397,83 +397,118 @@ def get_period_stats(user_id, period_days):
 def get_hourly_activity_stats(user_id, days=1):
     """
     Получение статистики активности по 30-минутным интервалам за указанное количество дней.
-    Упрощенная версия - используем UTC время для графика.
+    С учетом часового пояса пользователя.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Используем текущую дату в UTC
-    current_date = datetime.utcnow().date()
+    # Получаем часовой пояс пользователя
+    timezone_code = get_user_timezone(user_id)
+
+    # Преобразуем код часового пояса в формат pytz
+    tz_mapping = {
+        'Russian Standard Time': 'Europe/Moscow',
+        'FLE Standard Time': 'Europe/Kiev',
+        'Belarus Standard Time': 'Europe/Minsk',
+        'West Asia Standard Time': 'Asia/Yekaterinburg',
+        'Central Asia Standard Time': 'Asia/Almaty',
+        'SE Asia Standard Time': 'Asia/Bangkok',
+        'China Standard Time': 'Asia/Shanghai',
+        'Tokyo Standard Time': 'Asia/Tokyo',
+        'GMT Standard Time': 'Europe/London',
+        'W. Europe Standard Time': 'Europe/Berlin',
+        'Eastern Standard Time': 'America/New_York',
+        'Pacific Standard Time': 'America/Los_Angeles',
+    }
+
+    user_tz_name = tz_mapping.get(timezone_code, 'UTC')
+    print(f"DEBUG: Часовой пояс пользователя: {timezone_code} -> {user_tz_name}")
+
+    try:
+        import pytz
+        user_tz = pytz.timezone(user_tz_name)
+        user_now = datetime.now(user_tz)
+        current_date = user_now.date()
+    except:
+        user_now = datetime.utcnow()
+        current_date = user_now.date()
+
     start_date = current_date - timedelta(days=days - 1)
 
-    # Получаем все активности за период в UTC
+    # Получаем все активности за период
     cursor.execute('''
         SELECT activity_type, start_time, 
                COALESCE(duration_seconds, 
                        strftime('%s', 'now') - strftime('%s', start_time)) as duration
         FROM activities 
         WHERE user_id = ? 
-          AND date(start_time) BETWEEN date(?) AND date(?)
+          AND start_time >= ?
         ORDER BY start_time
-    ''', (user_id, start_date.isoformat(), current_date.isoformat()))
+    ''', (user_id, (datetime.utcnow() - timedelta(days=days)).isoformat()))
 
     activities = cursor.fetchall()
     conn.close()
 
-    # Создаем структуру для хранения статистики
     days_stats = []
 
     for day_offset in range(days):
         current_day = start_date + timedelta(days=day_offset)
-
-        # 48 интервалов по 30 минут
-        hourly_stats = [('rest', 0)] * 48  # По умолчанию все интервалы - отдых
+        hourly_stats = [('rest', 0)] * 48
 
         for activity_type, start_time_str, duration in activities:
-            start_time = datetime.fromisoformat(start_time_str)
+            # Время в базе хранится в UTC
+            start_time_utc = datetime.fromisoformat(start_time_str)
 
-            # Проверяем, относится ли активность к текущему дню (по UTC)
-            if start_time.date() != current_day:
+            try:
+                # Конвертируем в локальное время пользователя
+                if user_tz:
+                    start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                else:
+                    start_time_local = start_time_utc
+            except:
+                start_time_local = start_time_utc
+
+            # Проверяем, относится ли активность к текущему дню в локальном времени
+            if start_time_local.date() != current_day:
                 continue
 
-            # Рассчитываем время окончания активности
-            end_time = start_time + timedelta(seconds=duration)
+            end_time_utc = start_time_utc + timedelta(seconds=duration)
 
-            # Разбиваем активность на 30-минутные интервалы в UTC
-            interval_start = start_time
+            try:
+                if user_tz:
+                    end_time_local = end_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                else:
+                    end_time_local = end_time_utc
+            except:
+                end_time_local = end_time_utc
+
+            # Разбиваем активность на 30-минутные интервалы в ЛОКАЛЬНОМ времени
+            interval_start = start_time_local
             remaining_seconds = duration
 
-            while remaining_seconds > 0 and interval_start < end_time:
-                # Определяем час и минуту в UTC
+            while remaining_seconds > 0 and interval_start < end_time_local:
                 hour = interval_start.hour
                 minute = interval_start.minute
-
-                # Определяем номер интервала (0-47)
                 interval_num = (hour * 2) + (minute // 30)
 
-                # Проверяем, что интервал в пределах 0-47
                 if interval_num < 0 or interval_num >= 48:
                     break
 
-                # Определяем конец текущего интервала
                 interval_end_time = interval_start.replace(
                     minute=(minute // 30) * 30,
                     second=0,
                     microsecond=0
                 ) + timedelta(minutes=30)
 
-                # Сколько секунд активности попадает в этот интервал
                 seconds_in_interval = min(
                     remaining_seconds,
-                    (min(interval_end_time, end_time) - interval_start).total_seconds()
+                    (min(interval_end_time, end_time_local) - interval_start).total_seconds()
                 )
 
-                # Если в этом интервале еще нет активности или эта активность дольше
                 if seconds_in_interval > hourly_stats[interval_num][1]:
                     hourly_stats[interval_num] = (activity_type, seconds_in_interval)
 
-                # Переходим к следующему интервалу
                 interval_start = interval_end_time
                 remaining_seconds -= seconds_in_interval
 
