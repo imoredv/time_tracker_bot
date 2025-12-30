@@ -684,29 +684,33 @@ async def handle_timezone(message: Message):
 
     await message.answer(message_text, reply_markup=get_timezone_keyboard())
 
+
 @dp.message(F.text == "🌍 Автоопределение")
 async def handle_auto_timezone(message: Message):
     """
-    Автоопределение часового пояса.
+    Автоопределение часового пояса с учетом особенностей ботахост.ру.
     """
     user_id = message.from_user.id
 
     try:
-        auto_timezone = timezone_manager.detect_by_ip()
-        update_user_timezone(user_id, auto_timezone)
-
-        timezone_display = get_timezone_display_name(auto_timezone)
-        local_time = format_user_local_time(user_id)
-
+        # На ботахост.ру автоопределение по IP показывает серверный часовой пояс
+        # Поэтому предлагаем пользователю выбрать вручную
         response = (
-            f"✅ Часовой пояс обновлен!\n\n"
-            f"• {timezone_display}\n"
-            f"• Локальное время: {local_time}"
+            "⚠️ На ботахост.ру автоопределение показывает часовой пояс сервера.\n\n"
+            "Пожалуйста, выберите ваш часовой пояс вручную из списка ниже:\n\n"
+            "• 🇷🇺 Москва (UTC+3) - для центральной России\n"
+            "• 🇷🇺 Екатеринбург (UTC+5) - для Урала\n"
+            "• 🇷🇺 Красноярск (UTC+7) - для Сибири\n"
+            "• 🇺🇦 Киев (UTC+2) - для Украины\n"
+            "• 🇧🇾 Минск (UTC+3) - для Беларуси\n\n"
+            "Или выберите другой из списка:"
         )
-    except Exception as e:
-        response = f"❌ Не удалось определить часовой пояс автоматически: {e}"
 
-    await message.answer(response, reply_markup=get_settings_keyboard())
+        await message.answer(response, reply_markup=get_timezone_keyboard())
+
+    except Exception as e:
+        response = f"❌ Не удалось определить часовой пояс: {e}"
+        await message.answer(response, reply_markup=get_settings_keyboard())
 
 # Обработка выбора часового пояса
 @dp.message(F.text.in_(list(timezone_manager.common_timezones.keys())))

@@ -115,25 +115,35 @@ class TimezoneManager:
             return hashlib.md5(ip.encode()).hexdigest()
         return "default"
 
-    def detect_by_ip(self) -> str:
+    def detect_by_ip(self, force_refresh=False) -> str:
         """
-        Определение часового пояса по IP с кэшированием.
+        Определение часового пояса по IP.
+        На ботахост.ру определяет IP сервера, поэтому используем кэширование.
         """
-        cache_key = self._get_cache_key("user_ip")
+        # На ботахост.ру IP сервера всегда один, поэтому кэшируем результат
+        cache_key = self._get_cache_key("server_ip")
 
-        # Проверяем кэш
-        if cache_key in self.ip_cache:
+        # Проверяем кэш (не заставляем обновлять принудительно, если уже есть)
+        if not force_refresh and cache_key in self.ip_cache:
             cached_time, timezone = self.ip_cache[cache_key]
-            if time.time() - cached_time < self.cache_timeout:
+            # Кэш на 24 часа для сервера
+            if time.time() - cached_time < 86400:
                 print(f"✅ Часовой пояс из кэша: {timezone}")
                 return timezone
 
         # Пробуем определить по IP через API
         try:
-            response = requests.get('http://ip-api.com/json/', timeout=3)
+            response = requests.get('http://ip-api.com/json/', timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 timezone = data.get('timezone', 'UTC')
+
+                # Проверяем, не серверный ли это IP (обычные проверки для ботахост.ру)
+                if 'krasnoyarsk' in timezone.lower() or 'novosibirsk' in timezone.lower():
+                    # Это сервер ботахост.ру, предлагаем популярные часовые пояса
+                    print(f"⚠️ Определен серверный часовой пояс: {timezone}")
+                    # Возвращаем Москву как наиболее вероятный для русскоязычных пользователей
+                    timezone = 'Europe/Moscow'
 
                 # Сохраняем в кэш
                 self.ip_cache[cache_key] = (time.time(), timezone)
