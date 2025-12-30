@@ -184,13 +184,24 @@ def format_all_settings(user_id):
 
 
 def generate_activity_graph_with_dates(stats_by_hour, days=1):
-    """Генерация графиков активности с датами."""
+    """
+    Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
+    Каждая строка из 24 символов = 12 часов (1 символ = 30 минут)
+    Первая строка: 00:00-12:00
+    Вторая строка: 12:00-24:00
+
+    stats_by_hour: список из days элементов, каждый элемент - список из 48 кортежей
+                   (activity_type, seconds) для каждого 30-минутного интервала
+    days: количество дней
+
+    Возвращает строку с графиком.
+    """
     if not stats_by_hour or days <= 0:
         return ""
 
     graph_lines = []
 
-    # Проверяем, есть ли активность
+    # Проверяем, есть ли вообще активность за период
     has_activity = False
     for day_stats in stats_by_hour:
         for activity_type, seconds in day_stats:
@@ -203,12 +214,14 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
     if not has_activity:
         return ""
 
+    # Получаем текущую дату для расчета дат дней
     current_date = datetime.now().date()
 
     for day_idx, day_stats in enumerate(stats_by_hour):
+        # Рассчитываем дату для этого дня (дни идут в обратном порядке)
         day_date = current_date - timedelta(days=days - 1 - day_idx)
 
-        # Проверяем активность в дне
+        # Проверяем, есть ли активность в этом дне
         day_has_activity = False
         for activity_type, seconds in day_stats:
             if seconds > 0 and activity_type != 'rest':
@@ -218,34 +231,36 @@ def generate_activity_graph_with_dates(stats_by_hour, days=1):
         if not day_has_activity:
             continue
 
-        # Добавляем дату
+        # Форматируем дату в формате ДД.ММ.ГГГГ
         date_str = day_date.strftime("%d.%m.%Y")
         graph_lines.append(date_str)
 
         # Создаем график
+        # Первая строка: интервалы 0-23 (00:00-12:00)
         line1 = ""
-        for i in range(24):
+        for i in range(24):  # Интервалы 0-23
             activity_type, seconds = day_stats[i]
             if seconds > 0:
                 if activity_type == 'sleep':
-                    line1 += '▁'
+                    line1 += '▁'  # Сон
                 else:
                     symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
                     line1 += symbol
             else:
-                line1 += '▁'
+                line1 += '▁'  # Отдых или нет активности
 
+        # Вторая строка: интервалы 24-47 (12:00-24:00)
         line2 = ""
-        for i in range(24, 48):
+        for i in range(24, 48):  # Интервалы 24-47
             activity_type, seconds = day_stats[i]
             if seconds > 0:
                 if activity_type == 'sleep':
-                    line2 += '▁'
+                    line2 += '▁'  # Сон
                 else:
                     symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
                     line2 += symbol
             else:
-                line2 += '▁'
+                line2 += '▁'  # Отдых или нет активности
 
         graph_lines.append(line1)
         graph_lines.append(line2)
