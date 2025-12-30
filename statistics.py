@@ -35,22 +35,13 @@ async def get_daily_statistics(user_id):
     # Статистика с начала суток
     stats_today = get_daily_stats_sorted(user_id, today_date)
 
-    # Текущая активность
+    # Текущая активность (не показываем здесь, покажем в кнопке "Назад")
     current = get_current_activity(user_id)
 
     # Форматирование
     message_text = "📊 Суточная статистика:\n\n"
 
-    # Текущая активность
-    if current:
-        activity_type, start_time = current
-        start_time_dt = datetime.fromisoformat(start_time)
-        current_duration = int((datetime.now() - start_time_dt).total_seconds())
-        activity_name = ACTIVITIES.get(activity_type, activity_type)
-        emoji = get_activity_emoji(activity_type)
-        message_text += f"Текущая: {emoji} {activity_name} {format_duration_simple(current_duration)}\n\n"
-    else:
-        message_text += "Текущая: Нет активной задачи\n\n"
+    # УБИРАЕМ блок с текущей активностью здесь
 
     # График активности за 2 дня
     timeline_graph = generate_activity_graph_with_dates(hourly_stats, 2)
@@ -89,6 +80,41 @@ async def get_daily_statistics(user_id):
         message_text += f"\n\n📈 Всего за сегодня: {hours_today:02d}:{minutes_today:02d}:{seconds_today:02d}"
     else:
         message_text += "Нет данных за сегодня\n"
+
+    return message_text
+
+
+async def get_week_statistics(user_id):
+    """
+    Статистика за неделю.
+    """
+    hourly_stats = get_hourly_activity_stats(user_id, 7)
+    activity_stats = get_total_stats_by_activity(user_id, 7)
+    current = get_current_activity(user_id)
+
+    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 7)
+    bar_graph = generate_bar_graph_period(activity_stats, user_id)
+
+    total_seconds = sum(duration for _, duration in activity_stats)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
+    message_text = "📅 Статистика за неделю:\n\n"
+
+    # УБИРАЕМ блок с текущей активностью здесь
+
+    if timeline_graph and timeline_graph.strip():
+        message_text += timeline_graph
+        message_text += "\n\n"
+
+    message_text += "Рейтинг:\n\n"
+
+    if bar_graph:
+        message_text += bar_graph
+        message_text += f"\n\n📈 Показано за неделю: {hours:02d}:{minutes:02d}:{seconds:02d}"
+    else:
+        message_text += "Нет данных об активностях\n"
 
     return message_text
 

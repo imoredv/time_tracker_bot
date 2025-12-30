@@ -325,9 +325,24 @@ async def handle_clear_data(message: types.Message):
 
 @dp.message(F.text == "⬅️ Назад")
 async def handle_back(message: types.Message):
-    """Назад в главное меню."""
-    await message.answer("Главное меню",
-                         reply_markup=get_main_keyboard_with_current(message.from_user.id))
+    """Назад в главное меню с отображением текущей активности."""
+    user_id = message.from_user.id
+    current = get_current_activity(user_id)
+
+    if current:
+        activity_type, start_time = current
+        emoji = get_activity_emoji(activity_type)
+        name = ACTIVITIES.get(activity_type, activity_type)
+        start_time_dt = datetime.fromisoformat(start_time)
+        current_time = datetime.now()
+        duration = int((current_time - start_time_dt).total_seconds())
+
+        message_text = f"{emoji} {name} {format_duration_simple(duration)}"
+    else:
+        message_text = "Нет активной задачи"
+
+    await message.answer(message_text,
+                         reply_markup=get_main_keyboard_with_current(user_id))
 
 
 # ====================== ОБРАБОТЧИКИ ИНЛАЙН-КНОПОК ======================
