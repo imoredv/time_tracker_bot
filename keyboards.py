@@ -1,5 +1,5 @@
 """
-Клавиатуры с поддержкой часовых поясов.
+Клавиатуры с поддержкой часовых поясов..
 """
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
