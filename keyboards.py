@@ -20,6 +20,7 @@ def get_main_keyboard():
     )
     return keyboard
 
+
 def get_main_keyboard_with_current(user_id):
     """
     Основная клавиатура - активности с отметкой текущей активности.
@@ -50,21 +51,24 @@ def get_main_keyboard_with_current(user_id):
     # Первая строка: Труд и Учёба
     row1 = []
     for activity_type in ["work", "study"]:
-        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else activity_buttons[activity_type][0]
+        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else \
+        activity_buttons[activity_type][0]
         row1.append(KeyboardButton(text=button_text))
     keyboard_rows.append(row1)
 
     # Вторая строка: Спорт и Хобби
     row2 = []
     for activity_type in ["sport", "hobby"]:
-        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else activity_buttons[activity_type][0]
+        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else \
+        activity_buttons[activity_type][0]
         row2.append(KeyboardButton(text=button_text))
     keyboard_rows.append(row2)
 
     # Третья строка: Сон и Отдых
     row3 = []
     for activity_type in ["sleep", "rest"]:
-        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else activity_buttons[activity_type][0]
+        button_text = activity_buttons[activity_type][1] if current_activity_type == activity_type else \
+        activity_buttons[activity_type][0]
         row3.append(KeyboardButton(text=button_text))
     keyboard_rows.append(row3)
 

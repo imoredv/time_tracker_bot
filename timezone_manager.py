@@ -280,5 +280,84 @@ class TimezoneManager:
         return grouped
 
 
+def detect_by_user_info(self, language_code: str = None, user_agent: str = None) -> str:
+    """
+    Определение часового пояса по информации о пользователе.
+    """
+    # Сначала пробуем по языку
+    if language_code:
+        lang_to_timezone = {
+            'ru': 'Europe/Moscow',
+            'en': 'America/New_York',  # Для англ. по умолчанию США
+            'en-gb': 'Europe/London',
+            'en-us': 'America/New_York',
+            'uk': 'Europe/Kiev',
+            'be': 'Europe/Minsk',
+            'de': 'Europe/Berlin',
+            'fr': 'Europe/Paris',
+            'es': 'Europe/Madrid',
+            'es-es': 'Europe/Madrid',
+            'es-mx': 'America/Mexico_City',
+            'it': 'Europe/Rome',
+            'pl': 'Europe/Warsaw',
+            'zh': 'Asia/Shanghai',
+            'zh-cn': 'Asia/Shanghai',
+            'zh-tw': 'Asia/Taipei',
+            'ja': 'Asia/Tokyo',
+            'ko': 'Asia/Seoul',
+            'ar': 'Asia/Riyadh',
+            'tr': 'Europe/Istanbul',
+            'pt': 'America/Sao_Paulo',
+            'pt-br': 'America/Sao_Paulo',
+            'pt-pt': 'Europe/Lisbon',
+            'nl': 'Europe/Amsterdam',
+            'sv': 'Europe/Stockholm',
+            'no': 'Europe/Oslo',
+            'da': 'Europe/Copenhagen',
+            'fi': 'Europe/Helsinki',
+            'cs': 'Europe/Prague',
+            'hu': 'Europe/Budapest',
+            'ro': 'Europe/Bucharest',
+            'bg': 'Europe/Sofia',
+            'el': 'Europe/Athens',
+            'he': 'Asia/Jerusalem',
+        }
+
+        # Приводим к нижнему регистру
+        lang = language_code.lower()
+
+        # Пробуем полный код языка
+        if lang in lang_to_timezone:
+            print(f"✅ Определен часовой пояс по языку {lang}: {lang_to_timezone[lang]}")
+            return lang_to_timezone[lang]
+
+        # Пробуем первые 2 символа
+        lang_prefix = lang[:2] if len(lang) >= 2 else lang
+        for lang_key, tz in lang_to_timezone.items():
+            if lang_key.startswith(lang_prefix):
+                print(f"✅ Определен часовой пояс по префиксу языка {lang_prefix}: {tz}")
+                return tz
+
+    # Если не удалось по языку, пробуем по user-agent
+    if user_agent:
+        # Парсим user-agent для определения региона
+        if 'windows' in user_agent.lower():
+            # Windows часто показывает локаль системы
+            if '; ru' in user_agent or 'ru-ru' in user_agent:
+                return 'Europe/Moscow'
+            elif '; en-us' in user_agent:
+                return 'America/New_York'
+            elif '; en-gb' in user_agent:
+                return 'Europe/London'
+            elif '; de' in user_agent:
+                return 'Europe/Berlin'
+            elif '; fr' in user_agent:
+                return 'Europe/Paris'
+            elif '; es' in user_agent:
+                return 'Europe/Madrid'
+
+    # Если ничего не помогло, используем IP
+    return self.detect_by_ip()
+
 # Создаем глобальный экземпляр менеджера.
 timezone_manager = TimezoneManager()
