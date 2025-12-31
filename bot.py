@@ -247,9 +247,9 @@ async def handle_activity(message: types.Message, state: FSMContext):
     # Измененный текст
     response += "Уведомлять через:"
 
-    await message.answer("🔄 Обновление меню...",
-                         reply_markup=get_main_keyboard_with_current(user_id))
-    await message.answer(response, reply_markup=get_activity_reminder_keyboard())
+    # Убрано сообщение "🔄 Обновление меню..."
+    await message.answer(response,
+                         reply_markup=get_activity_reminder_keyboard())
 
     await state.update_data(activity_type=act_type)
     await state.set_state(EditStates.waiting_for_activity_reminder)
@@ -479,14 +479,13 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
 
+        # Просто редактируем сообщение
         await callback.message.edit_text(
             f"{emoji} {activity_name} старт\n00ч:00м:00с\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
         )
         await callback.answer(f"Интервал: {interval_minutes} мин")
 
         await state.clear()
-        await callback.message.answer("Активность запущена",
-                                     reply_markup=get_main_keyboard_with_current(user_id))
 
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
