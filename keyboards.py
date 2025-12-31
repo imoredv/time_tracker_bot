@@ -113,6 +113,7 @@ def get_settings_keyboard():
 def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=True):
     """
     Клавиатура для настройки интервала напоминаний с добавлением 5 секунд для тестов.
+    Преобразует минуты в часы для интервалов >= 60 минут.
     """
     # Кнопка статуса
     status_text = "🔔 Вкл" if notifications_enabled else "🔕 Выкл"
@@ -121,33 +122,42 @@ def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=
         callback_data="toggle_notif"
     )
 
-    # Кнопки интервалов (по 3 в ряд)
-    intervals = [
-        [
-            InlineKeyboardButton(text="5 сек", callback_data="interval_5"),
-            InlineKeyboardButton(text="5 мин", callback_data="interval_300"),
-            InlineKeyboardButton(text="15 мин", callback_data="interval_900")
-        ],
-        [
-            InlineKeyboardButton(text="30 мин", callback_data="interval_1800"),
-            InlineKeyboardButton(text="1 час", callback_data="interval_3600"),
-            InlineKeyboardButton(text="2 часа", callback_data="interval_7200")
-        ],
-        [
-            InlineKeyboardButton(text="4 часа", callback_data="interval_14400"),
-            InlineKeyboardButton(text="8 часов", callback_data="interval_28800"),
-            InlineKeyboardButton(text="🔕 Выкл", callback_data="interval_0")
-        ],
-        [status_button],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_settings")]
+    # Интервалы в секундах и их отображение
+    interval_data = [
+        ("5 сек", 5),
+        ("5 мин", 300),
+        ("15 мин", 900),
+        ("30 мин", 1800),
+        ("1 час", 3600),
+        ("2 часа", 7200),
+        ("4 часа", 14400),
+        ("8 часов", 28800),
+        ("🔕 Выкл", 0)
     ]
 
-    return InlineKeyboardMarkup(inline_keyboard=intervals)
+    # Создаем кнопки (по 3 в ряд)
+    interval_buttons = []
+    for i in range(0, len(interval_data), 3):
+        row = []
+        for display_text, interval_seconds in interval_data[i:i+3]:
+            row.append(InlineKeyboardButton(
+                text=display_text,
+                callback_data=f"interval_{interval_seconds}"
+            ))
+        interval_buttons.append(row)
+
+    # Добавляем кнопку статуса и назад
+    interval_buttons.append([status_button])
+    interval_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_settings")])
+
+    return InlineKeyboardMarkup(inline_keyboard=interval_buttons)
+
 
 def get_reminder_buttons_keyboard(current_interval_minutes=None):
     """
     Клавиатура с кнопками выбора интервала для напоминаний (под сообщением с напоминанием).
     С зеленой галочкой напротив текущего интервала.
+    Преобразует минуты в часы для интервалов >= 60 минут.
     """
     intervals = [15, 30, 60, 120, 240, 480]
 
@@ -155,10 +165,17 @@ def get_reminder_buttons_keyboard(current_interval_minutes=None):
     buttons = []
     for i in range(0, len(intervals), 3):  # По 3 кнопки в ряд
         row = []
-        for interval in intervals[i:i+3]:
-            button_text = f"{interval} мин"
+        for interval in intervals[i:i + 3]:
+            # Форматируем текст кнопки
+            if interval < 60:
+                button_text = f"{interval} мин"
+            else:
+                hours = interval // 60
+                button_text = f"{hours} час" if hours == 1 else f"{hours} часа"
+
             if current_interval_minutes and interval == current_interval_minutes:
-                button_text += " ✅"
+                button_text += " ✅"  # Зеленая галочка
+
             row.append(InlineKeyboardButton(
                 text=button_text,
                 callback_data=f"remind_{interval}"
@@ -167,10 +184,12 @@ def get_reminder_buttons_keyboard(current_interval_minutes=None):
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+
 def get_activity_reminder_keyboard(current_interval_minutes=None):
     """
     Клавиатура с кнопками выбора интервала уведомлений при смене активности.
     С зеленой галочкой напротив текущего интервала.
+    Преобразует минуты в часы для интервалов >= 60 минут.
     """
     intervals = [15, 30, 60, 120, 240, 480]
 
@@ -178,10 +197,17 @@ def get_activity_reminder_keyboard(current_interval_minutes=None):
     buttons = []
     for i in range(0, len(intervals), 3):  # По 3 кнопки в ряд
         row = []
-        for interval in intervals[i:i+3]:
-            button_text = f"{interval} мин"
+        for interval in intervals[i:i + 3]:
+            # Форматируем текст кнопки
+            if interval < 60:
+                button_text = f"{interval} мин"
+            else:
+                hours = interval // 60
+                button_text = f"{hours} час" if hours == 1 else f"{hours} часа"
+
             if current_interval_minutes and interval == current_interval_minutes:
-                button_text += " ✅"
+                button_text += " ✅"  # Зеленая галочка
+
             row.append(InlineKeyboardButton(
                 text=button_text,
                 callback_data=f"activity_remind_{interval}"
