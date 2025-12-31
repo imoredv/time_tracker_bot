@@ -154,9 +154,14 @@ def get_reminder_buttons_keyboard():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="10 мин", callback_data="remind_10"),
+                InlineKeyboardButton(text="15 мин", callback_data="remind_15"),
                 InlineKeyboardButton(text="30 мин", callback_data="remind_30"),
                 InlineKeyboardButton(text="1 час", callback_data="remind_60")
+            ],
+            [
+                InlineKeyboardButton(text="2 часа", callback_data="remind_120"),
+                InlineKeyboardButton(text="4 часа", callback_data="remind_240"),
+                InlineKeyboardButton(text="8 часов", callback_data="remind_480")
             ]
         ]
     )
@@ -165,14 +170,18 @@ def get_reminder_buttons_keyboard():
 def get_activity_reminder_keyboard():
     """
     Клавиатура с кнопками выбора интервала уведомлений при смене активности.
-    Только 10, 30 и 60 минут, без отключения уведомлений.
     """
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="10 мин", callback_data="activity_remind_10"),
+                InlineKeyboardButton(text="15 мин", callback_data="activity_remind_15"),
                 InlineKeyboardButton(text="30 мин", callback_data="activity_remind_30"),
                 InlineKeyboardButton(text="1 час", callback_data="activity_remind_60")
+            ],
+            [
+                InlineKeyboardButton(text="2 часа", callback_data="activity_remind_120"),
+                InlineKeyboardButton(text="4 часа", callback_data="activity_remind_240"),
+                InlineKeyboardButton(text="8 часов", callback_data="activity_remind_480")
             ]
         ]
     )
