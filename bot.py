@@ -467,11 +467,11 @@ async def handle_activity(message: types.Message, state: FSMContext):
         duration = int((current_time - start_time).total_seconds())
 
         # Форматируем время как ЧЧч:ММм:ССс
-        minutes = duration // 60
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
         seconds = duration % 60
-        if minutes >= 60:
-            hours = minutes // 60
-            minutes = minutes % 60
+
+        if hours > 0:
             time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
         else:
             time_str = f"{minutes}м:{seconds:02d}с"
@@ -497,11 +497,11 @@ async def handle_activity(message: types.Message, state: FSMContext):
         duration = int((end_time - start_time).total_seconds())
 
         # Форматируем время как ЧЧч:ММм:ССс
-        minutes = duration // 60
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
         seconds = duration % 60
-        if minutes >= 60:
-            hours = minutes // 60
-            minutes = minutes % 60
+
+        if hours > 0:
             time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
         else:
             time_str = f"{minutes}м:{seconds:02d}с"
