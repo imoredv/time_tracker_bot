@@ -237,23 +237,30 @@ async def handle_activity(message: types.Message, state: FSMContext):
         else:
             time_str = f"{minutes}м:{seconds:02d}с"
 
-        response += f"{emoji} {name} стоп\n{time_str}\n\n"
+        response += f"{emoji} {name} стоп\n{time_str}\n"
 
-    # Новая активность
+    # Сразу показываем меню с галочкой на новой активности
     emoji = get_activity_emoji(act_type)
     name = ACTIVITIES.get(act_type, act_type)
-    response += f"{emoji} {name} старт\n\n"
 
-    # Отправляем сообщение с inline-клавиатурой для выбора интервала
+    # Отправляем сообщение с обновленной клавиатурой (с галочкой)
     await message.answer(
-        response + "Уведомлять через:",
+        response + f"{emoji} {name} старт",
+        reply_markup=get_main_keyboard_with_current(user_id)
+    )
+
+    # Отправляем ОТДЕЛЬНОЕ сообщение с inline-клавиатурой для выбора интервала
+    reminder_msg = await message.answer(
+        "Уведомлять через:",
         reply_markup=get_activity_reminder_keyboard()
     )
 
-    # Сохраняем тип активности в состоянии
-    await state.update_data(activity_type=act_type)
+    # Сохраняем ID сообщения с клавиатурой для возможного удаления
+    await state.update_data(
+        activity_type=act_type,
+        reminder_message_id=reminder_msg.message_id
+    )
     await state.set_state(EditStates.waiting_for_activity_reminder)
-
 
 # ====================== ОБРАБОТЧИКИ СТАТИСТИКИ ======================
 
@@ -477,6 +484,7 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
 
+# bot.py
 @dp.callback_query(F.data.startswith("activity_remind_"))
 async def handle_activity_reminder_callback(callback: types.CallbackQuery, state: FSMContext):
     """Выбор интервала уведомлений при смене активности."""
@@ -496,19 +504,26 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
 
         data = await state.get_data()
         activity_type = data.get('activity_type', 'work')
-        activity_name = ACTIVITIES.get(activity_type, activity_type)
-        emoji = get_activity_emoji(activity_type)
+        reminder_message_id = data.get('reminder_message_id')
 
-        # Редактируем сообщение с выбором интервала
-        await callback.message.edit_text(
-            f"{emoji} {activity_name} старт\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
+        # Удаляем сообщение с выбором интервала
+        try:
+            if reminder_message_id:
+                await bot.delete_message(chat_id=user_id, message_id=reminder_message_id)
+        except:
+            pass
+
+        # Отправляем короткое подтверждение и удаляем его через 2 секунды
+        confirmation_msg = await callback.message.answer(
+            f"✅ Уведомления: каждые {interval_minutes} мин"
         )
 
-        # Отправляем новое сообщение с основной клавиатурой
-        await callback.message.answer(
-            "Активность запущена!",
-            reply_markup=get_main_keyboard_with_current(user_id)
-        )
+        # Удаляем подтверждение через 2 секунды
+        await asyncio.sleep(2)
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=confirmation_msg.message_id)
+        except:
+            pass
 
         await callback.answer(f"Интервал: {interval_minutes} мин")
         await state.clear()
@@ -516,7 +531,6 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
         await state.clear()
-
 
 @dp.callback_query(F.data == "toggle_notif")
 async def handle_toggle_notif(callback: types.CallbackQuery):
