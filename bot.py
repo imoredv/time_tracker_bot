@@ -191,10 +191,15 @@ async def handle_activity(message: types.Message, state: FSMContext):
         current_time = datetime.now()
         duration = int((current_time - start_time).total_seconds())
 
-        # Форматируем время как 19м:39с
-        minutes = duration // 60
+        # Форматируем время как ЧЧч:ММм:ССс
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
         seconds = duration % 60
-        time_str = f"{minutes}м:{seconds:02d}с"
+
+        if hours > 0:
+            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
+        else:
+            time_str = f"{minutes}м:{seconds:02d}с"
 
         await message.answer(
             f"{emoji} {name} продолжается\n{time_str}",
@@ -216,17 +221,22 @@ async def handle_activity(message: types.Message, state: FSMContext):
         end_time = datetime.now()
         duration = int((end_time - start_time).total_seconds())
 
-        # Форматируем время как 19м:15с
-        minutes = duration // 60
+        # Форматируем время как ЧЧч:ММм:ССс
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
         seconds = duration % 60
-        time_str = f"{minutes}м:{seconds:02d}с"
+
+        if hours > 0:
+            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
+        else:
+            time_str = f"{minutes}м:{seconds:02d}с"
 
         response += f"{emoji} {name} стоп\n{time_str}\n\n"
 
     # Новая активность
     emoji = get_activity_emoji(act_type)
     name = ACTIVITIES.get(act_type, act_type)
-    response += f"{emoji} {name} старт\n00м:00с\n\n"
+    response += f"{emoji} {name} старт\n00ч:00м:00с\n\n"
 
     # Предлагаем выбрать интервал уведомлений
     response += "📅 Выберите интервал уведомлений для этой активности:"
@@ -437,91 +447,6 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
 
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
-
-
-@dp.message(F.text.in_(["💼 Труд", "💼 Труд ✅", "📚 Учёба", "📚 Учёба ✅", "🏃 Спорт", "🏃 Спорт ✅",
-                        "🎨 Хобби", "🎨 Хобби ✅", "💤 Сон", "💤 Сон ✅", "☕️ Отдых", "☕️ Отдых ✅"]))
-async def handle_activity(message: types.Message, state: FSMContext):
-    """Обработчик выбора активности."""
-    user_id = message.from_user.id
-
-    button_text = message.text
-    activity_mapping = {
-        "💼 Труд": "work", "💼 Труд ✅": "work",
-        "📚 Учёба": "study", "📚 Учёба ✅": "study",
-        "🏃 Спорт": "sport", "🏃 Спорт ✅": "sport",
-        "🎨 Хобби": "hobby", "🎨 Хобби ✅": "hobby",
-        "💤 Сон": "sleep", "💤 Сон ✅": "sleep",
-        "☕️ Отдых": "rest", "☕️ Отдых ✅": "rest"
-    }
-
-    act_type = activity_mapping.get(button_text, "work")
-
-    # Проверяем, активна ли уже такая же активность
-    current = get_current_activity(user_id)
-    if current and current[0] == act_type:
-        emoji = get_activity_emoji(act_type)
-        name = ACTIVITIES.get(act_type, act_type)
-        start_time = datetime.fromisoformat(current[1])
-        current_time = datetime.now()
-        duration = int((current_time - start_time).total_seconds())
-
-        # Форматируем время как ЧЧч:ММм:ССс
-        hours = duration // 3600
-        minutes = (duration % 3600) // 60
-        seconds = duration % 60
-
-        if hours > 0:
-            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
-        else:
-            time_str = f"{minutes}м:{seconds:02d}с"
-
-        await message.answer(
-            f"{emoji} {name} продолжается\n{time_str}",
-            reply_markup=get_main_keyboard_with_current(user_id)
-        )
-        return
-
-    # Запускаем новую активность
-    completed_activity = start_activity(user_id, act_type)
-
-    response = ""
-
-    if completed_activity:
-        completed_type, start_time_str = completed_activity
-        emoji = get_activity_emoji(completed_type)
-        name = ACTIVITIES.get(completed_type, completed_type)
-
-        start_time = datetime.fromisoformat(start_time_str)
-        end_time = datetime.now()
-        duration = int((end_time - start_time).total_seconds())
-
-        # Форматируем время как ЧЧч:ММм:ССс
-        hours = duration // 3600
-        minutes = (duration % 3600) // 60
-        seconds = duration % 60
-
-        if hours > 0:
-            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
-        else:
-            time_str = f"{minutes}м:{seconds:02d}с"
-
-        response += f"{emoji} {name} стоп\n{time_str}\n\n"
-
-    # Новая активность
-    emoji = get_activity_emoji(act_type)
-    name = ACTIVITIES.get(act_type, act_type)
-    response += f"{emoji} {name} старт\n00ч:00м:00с\n\n"
-
-    # Предлагаем выбрать интервал уведомлений
-    response += "📅 Выберите интервал уведомлений для этой активности:"
-
-    await message.answer("🔄 Обновление меню...",
-                         reply_markup=get_main_keyboard_with_current(user_id))
-    await message.answer(response, reply_markup=get_activity_reminder_keyboard())
-
-    await state.update_data(activity_type=act_type)
-    await state.set_state(EditStates.waiting_for_activity_reminder)
 
 
 # ====================== ГЛАВНАЯ ФУНКЦИЯ ======================
