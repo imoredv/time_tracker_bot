@@ -10,6 +10,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
+
 from config import BOT_TOKEN, ADMIN_ID, ACTIVITIES, DEFAULT_TIMEZONE
 from database import (
     init_db, add_user, start_activity, get_current_activity,
@@ -164,6 +165,7 @@ async def handle_timezone_input(message: types.Message, state: FSMContext):
 
 # ====================== ОБРАБОТЧИКИ АКТИВНОСТЕЙ ======================
 
+# bot.py
 @dp.message(F.text.in_(["💼 Труд", "💼 Труд ✅", "📚 Учёба", "📚 Учёба ✅", "🏃 Спорт", "🏃 Спорт ✅",
                         "🎨 Хобби", "🎨 Хобби ✅", "💤 Сон", "💤 Сон ✅", "☕️ Отдых", "☕️ Отдых ✅"]))
 async def handle_activity(message: types.Message, state: FSMContext):
@@ -239,6 +241,11 @@ async def handle_activity(message: types.Message, state: FSMContext):
 
         response += f"{emoji} {name} стоп\n{time_str}\n"
 
+    # Получаем текущий интервал пользователя
+    settings = get_user_settings(user_id)
+    current_interval_seconds = settings['reminder_interval'] if settings else 1800
+    current_interval_minutes = current_interval_seconds // 60
+
     # Сразу показываем меню с галочкой на новой активности
     emoji = get_activity_emoji(act_type)
     name = ACTIVITIES.get(act_type, act_type)
@@ -252,7 +259,7 @@ async def handle_activity(message: types.Message, state: FSMContext):
     # Отправляем ОТДЕЛЬНОЕ сообщение с inline-клавиатурой для выбора интервала
     reminder_msg = await message.answer(
         "Уведомлять через:",
-        reply_markup=get_activity_reminder_keyboard()
+        reply_markup=get_activity_reminder_keyboard(current_interval_minutes)
     )
 
     # Сохраняем ID сообщения с клавиатурой для возможного удаления
@@ -458,6 +465,7 @@ async def handle_interval_callback(callback: types.CallbackQuery):
     await callback.answer(f"Установлено: {format_interval(interval)}")
 
 
+# bot.py
 @dp.callback_query(F.data.startswith("remind_"))
 async def handle_reminder_interval_callback(callback: types.CallbackQuery):
     """Выбор интервала напоминания в ответ на уведомление."""
@@ -475,10 +483,22 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
             if key.startswith(str(user_id)):
                 del reminder_manager.user_next_reminder_time[key]
 
-        await callback.message.edit_text(
-            f"✅ Уведомления установлены на каждые {interval_minutes} минут"
-        )
-        await callback.answer()
+        # Редактируем сообщение с информацией об установке интервала
+        try:
+            await callback.message.edit_text(
+                f"✅ Уведомления установлены на каждые {interval_minutes} минут"
+            )
+        except:
+            pass
+
+        # Удаляем сообщение через 2 секунды
+        await asyncio.sleep(2)
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=callback.message.message_id)
+        except:
+            pass
+
+        await callback.answer(f"Установлено: каждые {interval_minutes} минут")
 
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
@@ -506,22 +526,25 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         activity_type = data.get('activity_type', 'work')
         reminder_message_id = data.get('reminder_message_id')
 
-        # Удаляем сообщение с выбором интервала
+        # Удаляем сообщение с клавиатурой выбора интервала
         try:
             if reminder_message_id:
                 await bot.delete_message(chat_id=user_id, message_id=reminder_message_id)
         except:
             pass
 
-        # Отправляем короткое подтверждение и удаляем его через 2 секунды
-        confirmation_msg = await callback.message.answer(
-            f"✅ Уведомления: каждые {interval_minutes} мин"
-        )
+        # Редактируем callback-сообщение с информацией об установке интервала
+        try:
+            await callback.message.edit_text(
+                f"✅ Уведомления установлены на каждые {interval_minutes} минут"
+            )
+        except:
+            pass
 
-        # Удаляем подтверждение через 2 секунды
+        # Удаляем само callback-сообщение через 2 секунды
         await asyncio.sleep(2)
         try:
-            await bot.delete_message(chat_id=user_id, message_id=confirmation_msg.message_id)
+            await bot.delete_message(chat_id=user_id, message_id=callback.message.message_id)
         except:
             pass
 

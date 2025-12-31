@@ -1,9 +1,9 @@
+# keyboards.py
 """
 Клавиатуры с поддержкой часовых поясов..
 """
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from timezone_manager import timezone_manager
 
 def get_main_keyboard():
     """
@@ -144,45 +144,51 @@ def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=
 
     return InlineKeyboardMarkup(inline_keyboard=intervals)
 
-def get_reminder_buttons_keyboard():
+def get_reminder_buttons_keyboard(current_interval_minutes=None):
     """
     Клавиатура с кнопками выбора интервала для напоминаний (под сообщением с напоминанием).
+    С зеленой галочкой напротив текущего интервала.
     """
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="15 мин", callback_data="remind_15"),
-                InlineKeyboardButton(text="30 мин", callback_data="remind_30"),
-                InlineKeyboardButton(text="1 час", callback_data="remind_60")
-            ],
-            [
-                InlineKeyboardButton(text="2 часа", callback_data="remind_120"),
-                InlineKeyboardButton(text="4 часа", callback_data="remind_240"),
-                InlineKeyboardButton(text="8 часов", callback_data="remind_480")
-            ]
-        ]
-    )
-    return keyboard
+    intervals = [15, 30, 60, 120, 240, 480]
 
-def get_activity_reminder_keyboard():
+    # Создаем кнопки с галочками
+    buttons = []
+    for i in range(0, len(intervals), 3):  # По 3 кнопки в ряд
+        row = []
+        for interval in intervals[i:i+3]:
+            button_text = f"{interval} мин"
+            if current_interval_minutes and interval == current_interval_minutes:
+                button_text += " ✅"
+            row.append(InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"remind_{interval}"
+            ))
+        buttons.append(row)
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_activity_reminder_keyboard(current_interval_minutes=None):
     """
     Клавиатура с кнопками выбора интервала уведомлений при смене активности.
+    С зеленой галочкой напротив текущего интервала.
     """
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="15 мин", callback_data="activity_remind_15"),
-                InlineKeyboardButton(text="30 мин", callback_data="activity_remind_30"),
-                InlineKeyboardButton(text="1 час", callback_data="activity_remind_60")
-            ],
-            [
-                InlineKeyboardButton(text="2 часа", callback_data="activity_remind_120"),
-                InlineKeyboardButton(text="4 часа", callback_data="activity_remind_240"),
-                InlineKeyboardButton(text="8 часов", callback_data="activity_remind_480")
-            ]
-        ]
-    )
-    return keyboard
+    intervals = [15, 30, 60, 120, 240, 480]
+
+    # Создаем кнопки с галочками
+    buttons = []
+    for i in range(0, len(intervals), 3):  # По 3 кнопки в ряд
+        row = []
+        for interval in intervals[i:i+3]:
+            button_text = f"{interval} мин"
+            if current_interval_minutes and interval == current_interval_minutes:
+                button_text += " ✅"
+            row.append(InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"activity_remind_{interval}"
+            ))
+        buttons.append(row)
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_quiet_time_keyboard(quiet_enabled=True, start_time="22:00", end_time="06:00"):
     """

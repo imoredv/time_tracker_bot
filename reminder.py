@@ -227,12 +227,18 @@ class ReminderManager:
 
         return False
 
+    # reminder.py (в функции send_reminder_with_buttons)
     async def send_reminder_with_buttons(self, user_id: int):
         """
         Отправка напоминания с кнопками выбора интервала.
         """
         try:
             current_activity = get_current_activity(user_id)
+
+            # Получаем текущие настройки пользователя
+            settings = get_user_settings(user_id)
+            current_interval_seconds = settings['reminder_interval'] if settings else 1800
+            current_interval_minutes = current_interval_seconds // 60
 
             if current_activity:
                 # Получаем название активности
@@ -261,14 +267,14 @@ class ReminderManager:
                 await self.bot.send_message(
                     chat_id=user_id,
                     text=f"{emoji} {activity_name}?\n{time_str}\n\nУведомлять через:",
-                    reply_markup=get_reminder_buttons_keyboard()
+                    reply_markup=get_reminder_buttons_keyboard(current_interval_minutes)
                 )
             else:
                 # Если нет активности
                 await self.bot.send_message(
                     chat_id=user_id,
                     text="❓ Чем занят?\n\nУведомлять через:",
-                    reply_markup=get_reminder_buttons_keyboard()
+                    reply_markup=get_reminder_buttons_keyboard(current_interval_minutes)
                 )
 
         except Exception as e:
