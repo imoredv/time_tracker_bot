@@ -287,7 +287,7 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
 
-        # Форматируем время с явными единицами (новый формат: 6ч:11м)
+        # Форматируем время с явными единицами (новый формат: ДДд:ЧЧч:ММм)
         time_str = format_duration_for_statistics(seconds)
 
         # Определяем, текущая ли это активность

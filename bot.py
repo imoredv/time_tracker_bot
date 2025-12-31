@@ -244,7 +244,7 @@ async def handle_activity(message: types.Message, state: FSMContext):
     name = ACTIVITIES.get(act_type, act_type)
     response += f"{emoji} {name} старт\n00ч:00м:00с\n\n"
 
-    # Измененный текст: Уведомлять через:
+    # Измененный текст
     response += "Уведомлять через:"
 
     await message.answer("🔄 Обновление меню...",
@@ -380,12 +380,15 @@ async def handle_back(message: types.Message):
         current_time = datetime.now()
         duration = int((current_time - start_time_dt).total_seconds())
 
-        # Форматируем время как ЧЧч:ММм:ССс
-        hours = duration // 3600
+        # Форматируем время как ДДд:ЧЧч:ММм:ССс
+        days = duration // 86400
+        hours = (duration % 86400) // 3600
         minutes = (duration % 3600) // 60
         seconds = duration % 60
 
-        if hours > 0:
+        if days > 0:
+            time_str = f"{days}д:{hours:02d}ч:{minutes:02d}м:{seconds:02d}с"
+        elif hours > 0:
             time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
         else:
             time_str = f"{minutes}м:{seconds:02d}с"
@@ -454,6 +457,39 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
+@dp.callback_query(F.data.startswith("activity_remind_"))
+async def handle_activity_reminder_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Выбор интервала уведомлений при смене активности."""
+    user_id = callback.from_user.id
+    interval_str = callback.data.split("_")[2]
+
+    try:
+        interval_minutes = int(interval_str)
+        interval_seconds = interval_minutes * 60
+
+        update_user_setting(user_id, 'reminder_interval', interval_seconds)
+        update_user_setting(user_id, 'notifications_enabled', 1)
+
+        for key in list(reminder_manager.user_next_reminder_time.keys()):
+            if key.startswith(str(user_id)):
+                del reminder_manager.user_next_reminder_time[key]
+
+        data = await state.get_data()
+        activity_type = data.get('activity_type', 'work')
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        await callback.message.edit_text(
+            f"{emoji} {activity_name} старт\n00ч:00м:00с\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
+        )
+        await callback.answer(f"Интервал: {interval_minutes} мин")
+
+        await state.clear()
+        await callback.message.answer("Активность запущена",
+                                     reply_markup=get_main_keyboard_with_current(user_id))
+
+    except Exception as e:
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
 
 # ====================== ГЛАВНАЯ ФУНКЦИЯ ======================
 

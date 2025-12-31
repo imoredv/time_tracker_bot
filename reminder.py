@@ -246,13 +246,18 @@ class ReminderManager:
                 start_time_dt = datetime.fromisoformat(start_time)
                 duration = int((datetime.now() - start_time_dt).total_seconds())
 
-                # Форматируем как 19м:39с
-                minutes = duration // 60
+                # Форматируем как ДДд:ЧЧч:ММм:ССс
+                days = duration // 86400
+                hours = (duration % 86400) // 3600
+                minutes = (duration % 3600) // 60
                 seconds = duration % 60
-                if minutes > 0:
-                    time_str = f"{minutes}м:{seconds:02d}с"
+
+                if days > 0:
+                    time_str = f"{days}д:{hours:02d}ч:{minutes:02d}м:{seconds:02d}с"
+                elif hours > 0:
+                    time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
                 else:
-                    time_str = f"{seconds}с"
+                    time_str = f"{minutes}м:{seconds:02d}с"
 
                 # Отправляем сообщение с кнопками
                 await self.bot.send_message(

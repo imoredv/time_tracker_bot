@@ -253,34 +253,6 @@ def get_enhanced_timezone_keyboard():
     ])
     return keyboard
 
-def get_enhanced_timezone_keyboard():
-    """
-    Улучшенная клавиатура для выбора часового пояса.
-    """
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🔍 Поиск по городу", callback_data="tz_search"),
-            InlineKeyboardButton(text="⏱️ Проверить время", callback_data="tz_check_time")
-        ],
-        [
-            InlineKeyboardButton(text="🌍 По странам", callback_data="tz_search_country"),
-            InlineKeyboardButton(text="📋 Полный список", callback_data="tz_show_all")
-        ],
-        [
-            InlineKeyboardButton(text="🇷🇺 Россия", callback_data="tz_country_rus"),
-            InlineKeyboardButton(text="🇺🇸 США", callback_data="tz_country_usa")
-        ],
-        [
-            InlineKeyboardButton(text="🇪🇺 Европа", callback_data="tz_group_Европа"),
-            InlineKeyboardButton(text="🌏 Азия", callback_data="tz_group_Азия")
-        ],
-        [
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_back_to_settings")
-        ]
-    ])
-    return keyboard
-
-
 def get_simple_start_timezone_keyboard():
     """
     Простая клавиатура для выбора часового пояса при старте.
@@ -306,7 +278,6 @@ def get_simple_start_timezone_keyboard():
         ]
     )
     return keyboard
-
 
 def get_timezone_main_keyboard():
     """
@@ -340,7 +311,6 @@ def get_timezone_main_keyboard():
         ]
     )
 
-
 def get_timezone_search_keyboard():
     """
     Клавиатура для поиска часового пояса.
@@ -361,7 +331,6 @@ def get_timezone_search_keyboard():
             InlineKeyboardButton(text="⬅️ Назад", callback_data="tz_cancel")
         ]
     ])
-
 
 def get_timezone_with_time_keyboard():
     """
@@ -385,8 +354,6 @@ def get_timezone_with_time_keyboard():
         ]
     ])
 
-
-# В keyboards.py добавить
 def get_simple_timezone_keyboard():
     """Простая клавиатура часового пояса."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
