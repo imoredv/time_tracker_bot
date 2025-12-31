@@ -2,21 +2,21 @@
 Функции для работы со статистикой.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import (
     get_hourly_activity_stats,
     get_total_stats_by_activity,
     get_current_activity,
-    get_daily_stats_sorted,  # Импорт добавлен
-    get_user_current_date
+    get_daily_stats_sorted,
+    get_user_current_date,
+    get_period_stats
 )
 from config import ACTIVITIES
 from utils import (
     get_activity_emoji,
-    format_duration_simple,
-    format_duration_for_statistics,
     generate_activity_graph_with_dates,
-    generate_bar_graph_period
+    generate_bar_graph_period,
+    format_duration_for_statistics
 )
 
 
@@ -135,7 +135,6 @@ async def get_week_statistics(user_id):
         current_duration = int((datetime.now() - start_time_dt).total_seconds())
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
-        # Используем новую функцию форматирования
         time_str = format_duration_for_statistics(current_duration)
         message_text += f"Текущая: {emoji} {activity_name} {time_str}\n\n"
     else:
@@ -146,6 +145,83 @@ async def get_week_statistics(user_id):
         message_text += "\n\n"
 
     message_text += "Рейтинг:\n\n"
+
+    if bar_graph:
+        message_text += bar_graph
+    else:
+        message_text += "Нет данных об активностях\n"
+
+    return message_text
+
+
+async def get_month_statistics(user_id):
+    """
+    Статистика за месяц (30 дней).
+    """
+    hourly_stats = get_hourly_activity_stats(user_id, 30)
+    activity_stats = get_total_stats_by_activity(user_id, 30)
+    current = get_current_activity(user_id)
+
+    # Для месяца показываем только последние 7 дней в графике
+    recent_hourly_stats = hourly_stats[-7:] if len(hourly_stats) > 7 else hourly_stats
+    timeline_graph = generate_activity_graph_with_dates(recent_hourly_stats, min(7, len(recent_hourly_stats)))
+
+    # Фильтруем активности больше 1 минуты
+    filtered_stats = [(act_type, duration) for act_type, duration in activity_stats if duration >= 60]
+    bar_graph = generate_bar_graph_period(filtered_stats, user_id)
+
+    message_text = "📅 Статистика за месяц:\n\n"
+
+    if current:
+        activity_type, start_time = current
+        start_time_dt = datetime.fromisoformat(start_time)
+        current_duration = int((datetime.now() - start_time_dt).total_seconds())
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+        time_str = format_duration_for_statistics(current_duration)
+        message_text += f"Текущая: {emoji} {activity_name} {time_str}\n\n"
+    else:
+        message_text += "Текущая: Нет активной задачи\n\n"
+
+    if timeline_graph and timeline_graph.strip():
+        message_text += timeline_graph
+        message_text += "\n\n"
+
+    message_text += "Рейтинг за месяц:\n\n"
+
+    if bar_graph:
+        message_text += bar_graph
+    else:
+        message_text += "Нет данных об активностях\n"
+
+    return message_text
+
+
+async def get_year_statistics(user_id):
+    """
+    Статистика за год.
+    """
+    activity_stats = get_period_stats(user_id, 365)
+    current = get_current_activity(user_id)
+
+    # Фильтруем активности больше 1 минуты
+    filtered_stats = [(act_type, duration) for act_type, duration in activity_stats if duration >= 60]
+    bar_graph = generate_bar_graph_period(filtered_stats, user_id)
+
+    message_text = "📊 Статистика за год:\n\n"
+
+    if current:
+        activity_type, start_time = current
+        start_time_dt = datetime.fromisoformat(start_time)
+        current_duration = int((datetime.now() - start_time_dt).total_seconds())
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+        time_str = format_duration_for_statistics(current_duration)
+        message_text += f"Текущая: {emoji} {activity_name} {time_str}\n\n"
+    else:
+        message_text += "Текущая: Нет активной задачи\n\n"
+
+    message_text += "Рейтинг за год:\n\n"
 
     if bar_graph:
         message_text += bar_graph

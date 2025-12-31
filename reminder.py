@@ -1,6 +1,6 @@
 """
 Модуль для напоминаний с поддержкой часовых поясов и привязкой к часам
-Поддержка тестовых интервалов в 5 секунд...
+Поддержка тестовых интервалов в 5 секунд.
 """
 
 import asyncio
@@ -93,9 +93,9 @@ class ReminderManager:
 
                         # Проверяем тихое время
                         settings = get_user_settings(user_id)
-                        if settings and settings['quiet_time_enabled']:
-                            quiet_start = settings['quiet_time_start']
-                            quiet_end = settings['quiet_time_end']
+                        if settings and settings.get('quiet_time_enabled', True):
+                            quiet_start = settings.get('quiet_time_start', '22:00')
+                            quiet_end = settings.get('quiet_time_end', '06:00')
 
                             if self._is_in_quiet_time(user_local_time, quiet_start, quiet_end):
                                 continue
@@ -122,7 +122,6 @@ class ReminderManager:
                             next_reminder = self.user_next_reminder_time[cache_key]
 
                             # Проверяем, настало ли время напоминания
-                            # Важно: приводим оба времени к одному типу (aware/naive)
                             if self._is_time_reached(user_local_time, next_reminder):
                                 await self.send_reminder_with_buttons(user_id)
                                 # Обновляем время следующего напоминания
@@ -158,38 +157,37 @@ class ReminderManager:
         Безопасное сравнение времени с учетом aware/naive типов.
         """
         try:
-            # Если оба времени aware или оба naive - сравниваем напрямую
-            if (current_time.tzinfo is not None and target_time.tzinfo is not None) or \
-               (current_time.tzinfo is None and target_time.tzinfo is None):
-                return current_time >= target_time
+            # Приводим оба времени к aware в UTC для сравнения
+            if current_time.tzinfo is None:
+                current_time_utc = pytz.UTC.localize(current_time)
             else:
-                # Если типы разные, приводим к aware
-                if current_time.tzinfo is None and target_time.tzinfo is not None:
-                    # Делаем current_time aware в той же временной зоне
-                    return current_time.replace(tzinfo=target_time.tzinfo) >= target_time
-                elif current_time.tzinfo is not None and target_time.tzinfo is None:
-                    # Делаем target_time aware в той же временной зоне
-                    return current_time >= target_time.replace(tzinfo=current_time.tzinfo)
+                current_time_utc = current_time.astimezone(pytz.UTC)
+
+            if target_time.tzinfo is None:
+                target_time_utc = pytz.UTC.localize(target_time)
+            else:
+                target_time_utc = target_time.astimezone(pytz.UTC)
+
+            return current_time_utc >= target_time_utc
         except Exception as e:
             print(f"Ошибка сравнения времени: {e}")
             return False
 
     def _clean_old_cache_entries(self):
         """Очистка старых записей из кэша времени напоминаний."""
-        current_time = datetime.now(pytz.UTC)  # Используем UTC как базовое время
+        current_time = datetime.now(pytz.UTC)
         keys_to_remove = []
 
         for key, next_reminder_time in self.user_next_reminder_time.items():
             try:
-                # Приводим оба времени к одному типу для сравнения
+                # Приводим время из кэша к UTC для сравнения
                 if next_reminder_time.tzinfo is None:
-                    # Если время в кэше naive, делаем его aware в UTC
-                    cache_time_aware = pytz.UTC.localize(next_reminder_time)
+                    cache_time_utc = pytz.UTC.localize(next_reminder_time)
                 else:
-                    cache_time_aware = next_reminder_time
+                    cache_time_utc = next_reminder_time.astimezone(pytz.UTC)
 
                 # Если время напоминания прошло более чем сутки назад - удаляем
-                if (current_time - cache_time_aware).total_seconds() > 86400:
+                if (current_time - cache_time_utc).total_seconds() > 86400:
                     keys_to_remove.append(key)
             except Exception as e:
                 print(f"Ошибка очистки кэша для ключа {key}: {e}")
@@ -275,15 +273,3 @@ class ReminderManager:
 
         except Exception as e:
             print(f"Ошибка отправки напоминания пользователю {user_id}: {e}")
-
-    async def send_reminder(self, user_id: int):
-        """
-        Простое напоминание (без кнопок) для обратной совместимости.
-        """
-        await self.send_reminder_with_buttons(user_id)
-
-    async def send_test_reminder(self, user_id: int):
-        """
-        Тестовое напоминание.
-        """
-        await self.send_reminder_with_buttons(user_id)

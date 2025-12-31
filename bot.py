@@ -1,5 +1,5 @@
 """
-Time Tracker Bot с поддержкой часовых поясов..
+Time Tracker Bot с поддержкой часовых поясов.
 Упрощенная версия.
 """
 
@@ -242,15 +242,15 @@ async def handle_activity(message: types.Message, state: FSMContext):
     # Новая активность
     emoji = get_activity_emoji(act_type)
     name = ACTIVITIES.get(act_type, act_type)
-    response += f"{emoji} {name} старт\n00ч:00м:00с\n\n"
+    response += f"{emoji} {name} старт\n\n"
 
-    # Измененный текст
-    response += "Уведомлять через:"
+    # Отправляем сообщение с inline-клавиатурой для выбора интервала
+    await message.answer(
+        response + "Уведомлять через:",
+        reply_markup=get_activity_reminder_keyboard()
+    )
 
-    # Убрано сообщение "🔄 Обновление меню..."
-    await message.answer(response,
-                         reply_markup=get_activity_reminder_keyboard())
-
+    # Сохраняем тип активности в состоянии
     await state.update_data(activity_type=act_type)
     await state.set_state(EditStates.waiting_for_activity_reminder)
 
@@ -262,7 +262,6 @@ async def handle_statistics(message: types.Message):
     """Статистика за последние 24 часа И с начала суток."""
     try:
         user_id = message.from_user.id
-        print(f"DEBUG: Получен запрос статистики от пользователя {user_id}")
 
         # Получаем статистику
         stats_text = await get_daily_statistics(user_id)
@@ -288,6 +287,26 @@ async def handle_week_statistics(message: types.Message):
     user_id = message.from_user.id
     stats_text = await get_week_statistics(user_id)
     await message.answer(stats_text, reply_markup=get_statistics_keyboard())
+
+
+@dp.message(F.text == "📅 Месяц")
+async def handle_month_statistics(message: types.Message):
+    """Статистика за месяц - заглушка."""
+    user_id = message.from_user.id
+    await message.answer(
+        "📅 Статистика за месяц в разработке...",
+        reply_markup=get_statistics_keyboard()
+    )
+
+
+@dp.message(F.text == "📊 Год")
+async def handle_year_statistics(message: types.Message):
+    """Статистика за год - заглушка."""
+    user_id = message.from_user.id
+    await message.answer(
+        "📊 Статистика за год в разработке...",
+        reply_markup=get_statistics_keyboard()
+    )
 
 
 # ====================== ОБРАБОТЧИКИ НАСТРОЕК ======================
@@ -457,6 +476,7 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
+
 @dp.callback_query(F.data.startswith("activity_remind_"))
 async def handle_activity_reminder_callback(callback: types.CallbackQuery, state: FSMContext):
     """Выбор интервала уведомлений при смене активности."""
@@ -479,16 +499,203 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
 
-        # Просто редактируем сообщение
+        # Редактируем сообщение с выбором интервала
         await callback.message.edit_text(
-            f"{emoji} {activity_name} старт\n00ч:00м:00с\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
+            f"{emoji} {activity_name} старт\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
         )
-        await callback.answer(f"Интервал: {interval_minutes} мин")
 
+        # Отправляем новое сообщение с основной клавиатурой
+        await callback.message.answer(
+            "Активность запущена!",
+            reply_markup=get_main_keyboard_with_current(user_id)
+        )
+
+        await callback.answer(f"Интервал: {interval_minutes} мин")
         await state.clear()
 
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
+        await state.clear()
+
+
+@dp.callback_query(F.data == "toggle_notif")
+async def handle_toggle_notif(callback: types.CallbackQuery):
+    """Переключение уведомлений."""
+    user_id = callback.from_user.id
+    settings = get_user_settings(user_id)
+
+    if settings:
+        new_value = 0 if settings['notifications_enabled'] else 1
+        update_user_setting(user_id, 'notifications_enabled', new_value)
+
+        interval = settings['reminder_interval']
+        interval_text = format_interval(interval)
+        status_text = "включены" if new_value else "выключены"
+
+        await callback.message.edit_text(
+            f"⏰ Напоминания\nИнтервал: {interval_text}\nСтатус: {status_text}",
+            reply_markup=get_reminder_interval_keyboard(interval, bool(new_value))
+        )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "toggle_quiet")
+async def handle_toggle_quiet(callback: types.CallbackQuery):
+    """Переключение тихого часа."""
+    user_id = callback.from_user.id
+    settings = get_user_settings(user_id)
+
+    if settings:
+        new_value = 0 if settings['quiet_time_enabled'] else 1
+        update_user_setting(user_id, 'quiet_time_enabled', new_value)
+
+        start_time = settings['quiet_time_start']
+        end_time = settings['quiet_time_end']
+        status_text = "включен" if new_value else "выключен"
+
+        await callback.message.edit_text(
+            f"🌙 Тихий час\n{start_time} - {end_time}\nСтатус: {status_text}",
+            reply_markup=get_quiet_time_keyboard(bool(new_value), start_time, end_time)
+        )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.in_(["set_quiet_start", "set_quiet_end"]))
+async def handle_set_quiet_time(callback: types.CallbackQuery, state: FSMContext):
+    """Запрос на ввод времени для тихого часа."""
+    user_id = callback.from_user.id
+
+    if callback.data == "set_quiet_start":
+        await state.set_state(EditStates.waiting_for_quiet_start)
+        await callback.message.answer(
+            "Введите время начала тихого часа (например: 22:00):"
+        )
+    else:
+        await state.set_state(EditStates.waiting_for_quiet_end)
+        await callback.message.answer(
+            "Введите время окончания тихого часа (например: 06:00):"
+        )
+
+    await callback.answer()
+
+
+@dp.message(EditStates.waiting_for_quiet_start)
+async def handle_quiet_start_input(message: types.Message, state: FSMContext):
+    """Обработка ввода времени начала тихого часа."""
+    user_id = message.from_user.id
+    time_input = message.text.strip()
+
+    # Проверяем формат времени
+    import re
+    if re.match(r'^([01]?[0-9]|2[0-3]):([0-5][0-9])$', time_input):
+        update_user_setting(user_id, 'quiet_time_start', time_input)
+
+        settings = get_user_settings(user_id)
+        quiet_enabled = settings['quiet_time_enabled'] if settings else True
+        start_time = time_input
+        end_time = settings['quiet_time_end'] if settings else "06:00"
+        status_text = "включен" if quiet_enabled else "выключен"
+
+        await message.answer(
+            f"✅ Время начала установлено: {time_input}",
+            reply_markup=None
+        )
+
+        # Возвращаемся к настройкам тихого часа
+        await message.answer(
+            f"🌙 Тихий час\n{start_time} - {end_time}\nСтатус: {status_text}",
+            reply_markup=get_quiet_time_keyboard(quiet_enabled, start_time, end_time)
+        )
+    else:
+        await message.answer(
+            "❌ Неверный формат времени. Используйте формат ЧЧ:ММ (например: 22:00):"
+        )
+        return
+
+    await state.clear()
+
+
+@dp.message(EditStates.waiting_for_quiet_end)
+async def handle_quiet_end_input(message: types.Message, state: FSMContext):
+    """Обработка ввода времени окончания тихого часа."""
+    user_id = message.from_user.id
+    time_input = message.text.strip()
+
+    # Проверяем формат времени
+    import re
+    if re.match(r'^([01]?[0-9]|2[0-3]):([0-5][0-9])$', time_input):
+        update_user_setting(user_id, 'quiet_time_end', time_input)
+
+        settings = get_user_settings(user_id)
+        quiet_enabled = settings['quiet_time_enabled'] if settings else True
+        start_time = settings['quiet_time_start'] if settings else "22:00"
+        end_time = time_input
+        status_text = "включен" if quiet_enabled else "выключен"
+
+        await message.answer(
+            f"✅ Время окончания установлено: {time_input}",
+            reply_markup=None
+        )
+
+        # Возвращаемся к настройкам тихого часа
+        await message.answer(
+            f"🌙 Тихий час\n{start_time} - {end_time}\nСтатус: {status_text}",
+            reply_markup=get_quiet_time_keyboard(quiet_enabled, start_time, end_time)
+        )
+    else:
+        await message.answer(
+            "❌ Неверный формат времени. Используйте формат ЧЧ:ММ (например: 06:00):"
+        )
+        return
+
+    await state.clear()
+
+
+@dp.callback_query(F.data.in_(["clear_yes", "clear_no"]))
+async def handle_clear_confirm(callback: types.CallbackQuery):
+    """Обработка подтверждения очистки."""
+    user_id = callback.from_user.id
+
+    if callback.data == "clear_yes":
+        clear_user_data(user_id)
+        await callback.message.edit_text(
+            "✅ Все данные очищены. Настройки сброшены.",
+            reply_markup=None
+        )
+        # Отправляем новое сообщение с основной клавиатурой
+        await callback.message.answer(
+            "Данные очищены. Можете начать заново.",
+            reply_markup=get_main_keyboard_with_current(user_id)
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ Очистка отменена.",
+            reply_markup=None
+        )
+        # Возвращаемся к настройкам
+        await callback.message.answer(
+            "Настройки:",
+            reply_markup=get_settings_keyboard()
+        )
+
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back_settings")
+async def handle_back_settings(callback: types.CallbackQuery):
+    """Возврат к настройкам из меню интервалов."""
+    user_id = callback.from_user.id
+    settings_text = format_all_settings(user_id)
+    await callback.message.edit_text(
+        settings_text,
+        reply_markup=None
+    )
+    await callback.message.answer(
+        "Настройки:",
+        reply_markup=get_settings_keyboard()
+    )
+    await callback.answer()
+
 
 # ====================== ГЛАВНАЯ ФУНКЦИЯ ======================
 

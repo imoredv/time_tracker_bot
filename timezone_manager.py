@@ -152,7 +152,7 @@ class SimpleTimezoneManager:
 
         # 3. Частичное совпадение по городу
         for city, tz_code in self.city_to_tz.items():
-            if user_input in city:
+            if city in user_input or user_input in city:
                 for display_name, code in self.timezones.items():
                     if code == tz_code:
                         return tz_code, f"Часовой пояс: {display_name}"

@@ -1,5 +1,5 @@
 """
-База данных SQLite с поддержкой часовых поясов..
+База данных SQLite с поддержкой часовых поясов.
 """
 
 import sqlite3
@@ -363,7 +363,7 @@ def get_daily_stats(user_id, target_date=None):
         except:
             start_time_local = start_time_utc
 
-        # Проверяем, относится ли активность к нужному дню
+        # Проверяем, относится ли активность к нужному дню в локальном времени
         if start_time_local.date() != target_date:
             continue
 
@@ -400,6 +400,14 @@ def get_daily_stats(user_id, target_date=None):
 
     return result
 
+def get_daily_stats_sorted(user_id, target_date=None):
+    """
+    Статистика за день с учетом текущей активности и часового пояса, отсортированная по убыванию времени.
+    """
+    stats = get_daily_stats(user_id, target_date)
+    # Сортируем по убыванию времени
+    return sorted(stats, key=lambda x: x[1], reverse=True)
+
 def get_period_stats(user_id, period_days):
     """
     Статистика за период с учетом текущей активности.
@@ -408,56 +416,44 @@ def get_period_stats(user_id, period_days):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    start_date = (datetime.now() - timedelta(days=period_days)).date()
-    today = datetime.now().date()
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=period_days-1)
 
     cursor.execute('''
         SELECT activity_type, SUM(duration_seconds)
         FROM activities 
         WHERE user_id = ? 
-          AND date(start_time) >= date(?) 
+          AND date(start_time) BETWEEN date(?) AND date(?)
           AND duration_seconds IS NOT NULL
         GROUP BY activity_type
-    ''', (user_id, start_date.isoformat()))
+    ''', (user_id, start_date.isoformat(), end_date.isoformat()))
 
-    completed_stats = cursor.fetchall()
+    completed_stats = dict(cursor.fetchall())
 
-    cursor.execute('''
-        SELECT activity_type, start_time 
-        FROM activities 
-        WHERE user_id = ? 
-          AND end_time IS NULL
-          AND date(start_time) >= date(?)
-        LIMIT 1
-    ''', (user_id, start_date.isoformat()))
-
-    current_activity = cursor.fetchone()
-    conn.close()
-
-    stats_dict = {}
-
-    for activity_type, duration in completed_stats:
-        stats_dict[activity_type] = duration
-
+    # Добавляем текущую активность, если она есть
+    current_activity = get_current_activity(user_id)
     if current_activity:
         activity_type, start_time_str = current_activity
         start_time = datetime.fromisoformat(start_time_str)
-        current_time = datetime.now()
 
-        if start_time.date() >= start_date:
+        # Проверяем, попадает ли текущая активность в период
+        if start_date <= start_time.date() <= end_date:
+            current_time = datetime.now()
             current_duration = int((current_time - start_time).total_seconds())
 
-            if activity_type in stats_dict:
-                stats_dict[activity_type] += current_duration
+            if activity_type in completed_stats:
+                completed_stats[activity_type] += current_duration
             else:
-                stats_dict[activity_type] = current_duration
+                completed_stats[activity_type] = current_duration
 
+    # Добавляем все активности, даже с нулевым временем
     from config import ACTIVITIES
     result = []
     for activity_type in ACTIVITIES.keys():
-        duration = stats_dict.get(activity_type, 0)
+        duration = completed_stats.get(activity_type, 0)
         result.append((activity_type, duration))
 
+    # Сортируем по убыванию времени
     result.sort(key=lambda x: x[1], reverse=True)
 
     conn.close()
@@ -531,11 +527,20 @@ def get_hourly_activity_stats(user_id, days=1):
 
             try:
                 # Конвертируем в локальное время пользователя
+                # Инициализируем user_tz если еще не был инициализирован
+                if 'user_tz' not in locals():
+                    try:
+                        import pytz
+                        user_tz = pytz.timezone(user_tz_name)
+                    except:
+                        user_tz = None
+
                 if user_tz:
                     start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
                 else:
                     start_time_local = start_time_utc
-            except:
+            except Exception as e:
+                print(f"Ошибка конвертации времени: {e}")
                 start_time_local = start_time_utc
 
             # Проверяем, относится ли активность к текущему дню в локальном времени
@@ -594,54 +599,8 @@ def get_total_stats_by_activity(user_id, days=1):
     if days == 1:
         return get_stats_last_24_hours(user_id)
 
-    # Остальной код функции для days > 1
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=days-1)
-
-    # Статистика по завершенным активностям
-    cursor.execute('''
-        SELECT activity_type, SUM(duration_seconds)
-        FROM activities 
-        WHERE user_id = ? 
-          AND date(start_time) BETWEEN date(?) AND date(?)
-          AND duration_seconds IS NOT NULL
-        GROUP BY activity_type
-    ''', (user_id, start_date.isoformat(), end_date.isoformat()))
-
-    completed_stats = dict(cursor.fetchall())
-
-    # Добавляем текущую активность, если она есть
-    current_activity = get_current_activity(user_id)
-    if current_activity:
-        activity_type, start_time_str = current_activity
-        start_time = datetime.fromisoformat(start_time_str)
-
-        # Проверяем, попадает ли текущая активность в период
-        if start_date <= start_time.date() <= end_date:
-            current_time = datetime.now()
-            current_duration = int((current_time - start_time).total_seconds())
-
-            if activity_type in completed_stats:
-                completed_stats[activity_type] += current_duration
-            else:
-                completed_stats[activity_type] = current_duration
-
-    # Добавляем все активности, даже с нулевым временем
-    from config import ACTIVITIES
-    result = []
-    for activity_type in ACTIVITIES.keys():
-        duration = completed_stats.get(activity_type, 0)
-        result.append((activity_type, duration))
-
-    # Сортируем по убыванию времени
-    result.sort(key=lambda x: x[1], reverse=True)
-
-    conn.close()
-    return result
+    # Используем функцию get_period_stats для days > 1
+    return get_period_stats(user_id, days)
 
 def update_user_setting(user_id, setting_name, value):
     """
@@ -941,14 +900,6 @@ def debug_user_settings(user_id):
         • Конец: {settings[4]}
         """
     return f"❌ Настройки пользователя {user_id} не найдены"
-
-def get_daily_stats_sorted(user_id, target_date=None):
-    """
-    Статистика за день с учетом текущей активности и часового пояса, отсортированная по убыванию времени.
-    """
-    stats = get_daily_stats(user_id, target_date)
-    # Сортируем по убыванию времени
-    return sorted(stats, key=lambda x: x[1], reverse=True)
 
 def get_user_current_date(user_id):
     """
