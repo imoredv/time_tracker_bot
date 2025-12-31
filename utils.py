@@ -32,11 +32,15 @@ def format_duration_simple(seconds):
 
 
 def format_duration_for_statistics(seconds):
-    """Форматирование времени для статистики (часы:минуты в формате ЧЧч:ММм)."""
-    hours = seconds // 3600
+    """Форматирование времени для статистики (дни:часы:минуты в формате ДДд:ЧЧч:ММм)."""
+    days = seconds // 86400  # 86400 секунд в сутках
+    hours = (seconds % 86400) // 3600
     minutes = (seconds % 3600) // 60
 
-    if hours > 0:
+    if days > 0:
+        # Дни:часы:минуты (например: 2д:0ч:28м)
+        return f"{days}д:{hours:02d}ч:{minutes:02d}м"
+    elif hours > 0:
         # Часы:минуты (например: 6ч:11м)
         return f"{hours}ч:{minutes:02d}м"
     else:
