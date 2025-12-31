@@ -364,10 +364,15 @@ async def handle_back(message: types.Message):
         current_time = datetime.now()
         duration = int((current_time - start_time_dt).total_seconds())
 
-        # Форматируем время как 19м:39с
-        minutes = duration // 60
+        # Форматируем время как ЧЧч:ММм:ССс
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
         seconds = duration % 60
-        time_str = f"{minutes}м:{seconds:02d}с"
+
+        if hours > 0:
+            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
+        else:
+            time_str = f"{minutes}м:{seconds:02d}с"
 
         message_text = f"{emoji} {name} {time_str}"
     else:
@@ -434,40 +439,89 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
 
-@dp.callback_query(F.data.startswith("activity_remind_"))
-async def handle_activity_reminder_callback(callback: types.CallbackQuery, state: FSMContext):
-    """Выбор интервала уведомлений при смене активности."""
-    user_id = callback.from_user.id
-    interval_str = callback.data.split("_")[2]
+@dp.message(F.text.in_(["💼 Труд", "💼 Труд ✅", "📚 Учёба", "📚 Учёба ✅", "🏃 Спорт", "🏃 Спорт ✅",
+                        "🎨 Хобби", "🎨 Хобби ✅", "💤 Сон", "💤 Сон ✅", "☕️ Отдых", "☕️ Отдых ✅"]))
+async def handle_activity(message: types.Message, state: FSMContext):
+    """Обработчик выбора активности."""
+    user_id = message.from_user.id
 
-    try:
-        interval_minutes = int(interval_str)
-        interval_seconds = interval_minutes * 60
+    button_text = message.text
+    activity_mapping = {
+        "💼 Труд": "work", "💼 Труд ✅": "work",
+        "📚 Учёба": "study", "📚 Учёба ✅": "study",
+        "🏃 Спорт": "sport", "🏃 Спорт ✅": "sport",
+        "🎨 Хобби": "hobby", "🎨 Хобби ✅": "hobby",
+        "💤 Сон": "sleep", "💤 Сон ✅": "sleep",
+        "☕️ Отдых": "rest", "☕️ Отдых ✅": "rest"
+    }
 
-        update_user_setting(user_id, 'reminder_interval', interval_seconds)
-        update_user_setting(user_id, 'notifications_enabled', 1)
+    act_type = activity_mapping.get(button_text, "work")
 
-        for key in list(reminder_manager.user_next_reminder_time.keys()):
-            if key.startswith(str(user_id)):
-                del reminder_manager.user_next_reminder_time[key]
+    # Проверяем, активна ли уже такая же активность
+    current = get_current_activity(user_id)
+    if current and current[0] == act_type:
+        emoji = get_activity_emoji(act_type)
+        name = ACTIVITIES.get(act_type, act_type)
+        start_time = datetime.fromisoformat(current[1])
+        current_time = datetime.now()
+        duration = int((current_time - start_time).total_seconds())
 
-        data = await state.get_data()
-        activity_type = data.get('activity_type', 'work')
-        activity_name = ACTIVITIES.get(activity_type, activity_type)
-        emoji = get_activity_emoji(activity_type)
+        # Форматируем время как ЧЧч:ММм:ССс
+        minutes = duration // 60
+        seconds = duration % 60
+        if minutes >= 60:
+            hours = minutes // 60
+            minutes = minutes % 60
+            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
+        else:
+            time_str = f"{minutes}м:{seconds:02d}с"
 
-        # Обновляем формат времени на 00м:00с
-        await callback.message.edit_text(
-            f"{emoji} {activity_name}\n00м:00с\n\n✅ Уведомления установлены на каждые {interval_minutes} минут"
+        await message.answer(
+            f"{emoji} {name} продолжается\n{time_str}",
+            reply_markup=get_main_keyboard_with_current(user_id)
         )
-        await callback.answer(f"Интервал: {interval_minutes} мин")
+        return
 
-        await state.clear()
-        await callback.message.answer("Активность запущена",
-                                     reply_markup=get_main_keyboard_with_current(user_id))
+    # Запускаем новую активность
+    completed_activity = start_activity(user_id, act_type)
 
-    except Exception as e:
-        await callback.answer(f"Ошибка: {e}", show_alert=True)
+    response = ""
+
+    if completed_activity:
+        completed_type, start_time_str = completed_activity
+        emoji = get_activity_emoji(completed_type)
+        name = ACTIVITIES.get(completed_type, completed_type)
+
+        start_time = datetime.fromisoformat(start_time_str)
+        end_time = datetime.now()
+        duration = int((end_time - start_time).total_seconds())
+
+        # Форматируем время как ЧЧч:ММм:ССс
+        minutes = duration // 60
+        seconds = duration % 60
+        if minutes >= 60:
+            hours = minutes // 60
+            minutes = minutes % 60
+            time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
+        else:
+            time_str = f"{minutes}м:{seconds:02d}с"
+
+        response += f"{emoji} {name} стоп\n{time_str}\n\n"
+
+    # Новая активность
+    emoji = get_activity_emoji(act_type)
+    name = ACTIVITIES.get(act_type, act_type)
+    response += f"{emoji} {name} старт\n00ч:00м:00с\n\n"
+
+    # Предлагаем выбрать интервал уведомлений
+    response += "📅 Выберите интервал уведомлений для этой активности:"
+
+    await message.answer("🔄 Обновление меню...",
+                         reply_markup=get_main_keyboard_with_current(user_id))
+    await message.answer(response, reply_markup=get_activity_reminder_keyboard())
+
+    await state.update_data(activity_type=act_type)
+    await state.set_state(EditStates.waiting_for_activity_reminder)
 
 
 # ====================== ГЛАВНАЯ ФУНКЦИЯ ======================
