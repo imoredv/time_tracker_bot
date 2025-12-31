@@ -191,12 +191,15 @@ async def handle_activity(message: types.Message, state: FSMContext):
         current_time = datetime.now()
         duration = int((current_time - start_time).total_seconds())
 
-        # Форматируем время как ЧЧч:ММм:ССс
-        hours = duration // 3600
+        # Форматируем время как ДДд:ЧЧч:ММм:ССс
+        days = duration // 86400
+        hours = (duration % 86400) // 3600
         minutes = (duration % 3600) // 60
         seconds = duration % 60
 
-        if hours > 0:
+        if days > 0:
+            time_str = f"{days}д:{hours:02d}ч:{minutes:02d}м:{seconds:02d}с"
+        elif hours > 0:
             time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
         else:
             time_str = f"{minutes}м:{seconds:02d}с"
@@ -221,12 +224,15 @@ async def handle_activity(message: types.Message, state: FSMContext):
         end_time = datetime.now()
         duration = int((end_time - start_time).total_seconds())
 
-        # Форматируем время как ЧЧч:ММм:ССс
-        hours = duration // 3600
+        # Форматируем время как ДДд:ЧЧч:ММм:ССс
+        days = duration // 86400
+        hours = (duration % 86400) // 3600
         minutes = (duration % 3600) // 60
         seconds = duration % 60
 
-        if hours > 0:
+        if days > 0:
+            time_str = f"{days}д:{hours:02d}ч:{minutes:02d}м:{seconds:02d}с"
+        elif hours > 0:
             time_str = f"{hours}ч:{minutes:02d}м:{seconds:02d}с"
         else:
             time_str = f"{minutes}м:{seconds:02d}с"
@@ -238,8 +244,8 @@ async def handle_activity(message: types.Message, state: FSMContext):
     name = ACTIVITIES.get(act_type, act_type)
     response += f"{emoji} {name} старт\n00ч:00м:00с\n\n"
 
-    # Предлагаем выбрать интервал уведомлений
-    response += "📅 Выберите интервал уведомлений для этой активности:"
+    # Измененный текст: Уведомлять через:
+    response += "Уведомлять через:"
 
     await message.answer("🔄 Обновление меню...",
                          reply_markup=get_main_keyboard_with_current(user_id))
