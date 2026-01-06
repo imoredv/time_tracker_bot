@@ -759,6 +759,7 @@ def clear_user_data(user_id):
     conn.commit()
     conn.close()
 
+
 def get_users_for_reminders():
     """
     Пользователи для напоминаний с учетом тихого времени и часовых поясов.
@@ -767,11 +768,6 @@ def get_users_for_reminders():
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-
-    current_time = datetime.now()
-    current_hour = current_time.hour
-    current_minute = current_time.minute
-    current_second = current_time.second
 
     cursor.execute('''
         SELECT u.user_id, u.first_name, u.timezone,
@@ -798,9 +794,36 @@ def get_users_for_reminders():
         quiet_end = user[6]
         last_reminder = user[7]
 
-        # Для тестовых интервалов (5 секунд) пропускаем проверку тихого времени
-        # чтобы можно было тестировать в любое время
-        if quiet_time_enabled and reminder_interval >= 60:  # Только для интервалов >= 1 минуты
+        # Получаем ЛОКАЛЬНОЕ время пользователя для проверки тихого часа
+        try:
+            # Преобразуем код часового пояса в формат pytz
+            tz_mapping = {
+                'Russian Standard Time': 'Europe/Moscow',
+                'FLE Standard Time': 'Europe/Kiev',
+                'Belarus Standard Time': 'Europe/Minsk',
+                'West Asia Standard Time': 'Asia/Yekaterinburg',
+                'Central Asia Standard Time': 'Asia/Almaty',
+                'SE Asia Standard Time': 'Asia/Bangkok',
+                'China Standard Time': 'Asia/Shanghai',
+                'Tokyo Standard Time': 'Asia/Tokyo',
+                'GMT Standard Time': 'Europe/London',
+                'W. Europe Standard Time': 'Europe/Berlin',
+                'Eastern Standard Time': 'America/New_York',
+                'Pacific Standard Time': 'America/Los_Angeles',
+                'UTC': 'UTC',
+            }
+
+            user_tz_name = tz_mapping.get(user_timezone, 'UTC')
+            import pytz
+            user_tz = pytz.timezone(user_tz_name)
+            user_local_time = datetime.now(user_tz)
+        except Exception as e:
+            # Если ошибка, используем UTC время
+            print(f"Ошибка получения локального времени для {user_id}: {e}")
+            user_local_time = datetime.utcnow()
+
+        # Проверяем тихий час для ВСЕХ интервалов, если он включен
+        if quiet_time_enabled:
             def time_to_minutes(time_str):
                 try:
                     h, m = map(int, time_str.split(':'))
@@ -808,7 +831,10 @@ def get_users_for_reminders():
                 except:
                     return 0
 
+            current_hour = user_local_time.hour
+            current_minute = user_local_time.minute
             current_minutes = current_hour * 60 + current_minute
+
             start_minutes = time_to_minutes(quiet_start)
             end_minutes = time_to_minutes(quiet_end)
 
@@ -824,11 +850,14 @@ def get_users_for_reminders():
                     in_quiet_time = True
 
             if in_quiet_time:
-                continue
+                continue  # Пропускаем пользователя, если сейчас тихое время в его часовом поясе
+
+        # Для проверки интервала используем время сервера (как и раньше)
+        server_current_time = datetime.now()
 
         if last_reminder:
             last_reminder_time = datetime.fromisoformat(last_reminder)
-            time_since_last_reminder = (current_time - last_reminder_time).total_seconds()
+            time_since_last_reminder = (server_current_time - last_reminder_time).total_seconds()
 
             if time_since_last_reminder >= reminder_interval:
                 users_to_remind.append((user_id, first_name, reminder_interval, user_timezone))

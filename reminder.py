@@ -86,19 +86,38 @@ class ReminderManager:
                     try:
                         # Получаем локальное время пользователя
                         try:
-                            tz = pytz.timezone(user_timezone)
+                            # Преобразуем код часового пояса в формат pytz
+                            tz_mapping = {
+                                'Russian Standard Time': 'Europe/Moscow',
+                                'FLE Standard Time': 'Europe/Kiev',
+                                'Belarus Standard Time': 'Europe/Minsk',
+                                'West Asia Standard Time': 'Asia/Yekaterinburg',
+                                'Central Asia Standard Time': 'Asia/Almaty',
+                                'SE Asia Standard Time': 'Asia/Bangkok',
+                                'China Standard Time': 'Asia/Shanghai',
+                                'Tokyo Standard Time': 'Asia/Tokyo',
+                                'GMT Standard Time': 'Europe/London',
+                                'W. Europe Standard Time': 'Europe/Berlin',
+                                'Eastern Standard Time': 'America/New_York',
+                                'Pacific Standard Time': 'America/Los_Angeles',
+                                'UTC': 'UTC',
+                            }
+
+                            user_tz_name = tz_mapping.get(user_timezone, 'UTC')
+                            tz = pytz.timezone(user_tz_name)
                             user_local_time = datetime.now(tz)
                         except:
                             user_local_time = datetime.now()
 
-                        # Проверяем тихое время
+                        # Проверяем тихое время ДЛЯ ВСЕХ пользователей
+                        # (уже проверено в get_users_for_reminders, но проверяем еще раз на случай изменения времени)
                         settings = get_user_settings(user_id)
                         if settings and settings.get('quiet_time_enabled', True):
                             quiet_start = settings.get('quiet_time_start', '22:00')
                             quiet_end = settings.get('quiet_time_end', '06:00')
 
                             if self._is_in_quiet_time(user_local_time, quiet_start, quiet_end):
-                                continue
+                                continue  # Пропускаем, если сейчас тихое время
 
                         # Проверяем, нужно ли отправлять напоминание
                         cache_key = f"{user_id}_{interval}"
@@ -114,9 +133,11 @@ class ReminderManager:
                                 await self.send_reminder_with_buttons(user_id)
                                 # Для тестовых интервалов (5 секунд) используем простую логику
                                 if interval < 60:
-                                    self.user_next_reminder_time[cache_key] = user_local_time + timedelta(seconds=interval)
+                                    self.user_next_reminder_time[cache_key] = user_local_time + timedelta(
+                                        seconds=interval)
                                 else:
-                                    self.user_next_reminder_time[cache_key] = self._calculate_next_reminder_time(user_local_time, interval)
+                                    self.user_next_reminder_time[cache_key] = self._calculate_next_reminder_time(
+                                        user_local_time, interval)
                                 update_last_reminder_time(user_id)
                         else:
                             next_reminder = self.user_next_reminder_time[cache_key]
@@ -127,10 +148,12 @@ class ReminderManager:
                                 # Обновляем время следующего напоминания
                                 if interval < 60:
                                     # Для тестовых интервалов (5 секунд)
-                                    self.user_next_reminder_time[cache_key] = user_local_time + timedelta(seconds=interval)
+                                    self.user_next_reminder_time[cache_key] = user_local_time + timedelta(
+                                        seconds=interval)
                                 else:
                                     # Для обычных интервалов
-                                    self.user_next_reminder_time[cache_key] = self._calculate_next_reminder_time(user_local_time, interval)
+                                    self.user_next_reminder_time[cache_key] = self._calculate_next_reminder_time(
+                                        user_local_time, interval)
                                 update_last_reminder_time(user_id)
 
                     except Exception as e:
