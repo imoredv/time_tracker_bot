@@ -222,57 +222,95 @@ def start_activity(user_id, activity_type):
 
     return completed_activity
 
+
 def get_stats_last_24_hours(user_id):
     """
     Статистика за последние 24 часа с учетом текущей активности.
+    Улучшенная версия с правильной обработкой часовых поясов.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Время 24 часа назад от текущего момента
-    time_24_hours_ago = datetime.now() - timedelta(hours=24)
+    # Получаем часовой пояс пользователя
+    timezone_code = get_user_timezone(user_id)
 
+    # Маппинг часовых поясов для pytz
+    tz_mapping = {
+        'Russian Standard Time': 'Europe/Moscow',
+        'FLE Standard Time': 'Europe/Kiev',
+        'Belarus Standard Time': 'Europe/Minsk',
+        'West Asia Standard Time': 'Asia/Yekaterinburg',
+        'Central Asia Standard Time': 'Asia/Almaty',
+        'SE Asia Standard Time': 'Asia/Bangkok',
+        'China Standard Time': 'Asia/Shanghai',
+        'Tokyo Standard Time': 'Asia/Tokyo',
+        'GMT Standard Time': 'Europe/London',
+        'W. Europe Standard Time': 'Europe/Berlin',
+        'Eastern Standard Time': 'America/New_York',
+        'Pacific Standard Time': 'America/Los_Angeles',
+        'UTC': 'UTC',
+    }
+
+    user_tz_name = tz_mapping.get(timezone_code, 'UTC')
+
+    try:
+        import pytz
+        user_tz = pytz.timezone(user_tz_name)
+        user_now = datetime.now(user_tz)
+        time_24_hours_ago = user_now - timedelta(hours=24)
+        time_24_hours_ago_utc = time_24_hours_ago.astimezone(pytz.UTC)
+    except Exception as e:
+        print(f"Ошибка определения времени 24 часа назад: {e}")
+        user_now = datetime.utcnow()
+        time_24_hours_ago = user_now - timedelta(hours=24)
+        time_24_hours_ago_utc = time_24_hours_ago
+
+    # Получаем завершенные активности за последние 24 часа
     cursor.execute('''
-        SELECT activity_type, SUM(duration_seconds)
+        SELECT activity_type, start_time, duration_seconds
         FROM activities 
         WHERE user_id = ? 
           AND start_time >= ?
           AND duration_seconds IS NOT NULL
-        GROUP BY activity_type
-    ''', (user_id, time_24_hours_ago.isoformat()))
+    ''', (user_id, time_24_hours_ago_utc.isoformat()))
 
-    completed_stats = cursor.fetchall()
+    completed_activities = cursor.fetchall()
+
+    # Словарь для статистики
+    stats_dict = {}
+
+    # Обрабатываем завершенные активности
+    for activity_type, start_time_str, duration_seconds in completed_activities:
+        if activity_type in stats_dict:
+            stats_dict[activity_type] += duration_seconds
+        else:
+            stats_dict[activity_type] = duration_seconds
 
     # Добавляем текущую активность, если она есть и началась в последние 24 часа
     current_activity = get_current_activity(user_id)
     if current_activity:
         activity_type, start_time_str = current_activity
-        start_time = datetime.fromisoformat(start_time_str)
+        start_time_utc = datetime.fromisoformat(start_time_str)
+
+        try:
+            # Конвертируем время начала в часовой пояс пользователя
+            if 'user_tz' in locals():
+                start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+            else:
+                start_time_local = start_time_utc
+        except:
+            start_time_local = start_time_utc
 
         # Проверяем, началась ли текущая активность в последние 24 часа
-        if start_time >= time_24_hours_ago:
-            current_time = datetime.now()
-            current_duration = int((current_time - start_time).total_seconds())
+        if start_time_local >= time_24_hours_ago:
+            # Рассчитываем продолжительность текущей активности
+            current_duration = int((user_now - start_time_local).total_seconds())
 
-            # Ищем текущую активность в завершенных
-            found = False
-            completed_stats_list = list(completed_stats)
-            for i, (act_type, duration) in enumerate(completed_stats_list):
-                if act_type == activity_type:
-                    completed_stats_list[i] = (act_type, duration + current_duration)
-                    found = True
-                    break
-
-            if not found:
-                completed_stats_list.append((activity_type, current_duration))
-
-            completed_stats = completed_stats_list
-
-    # Преобразуем в словарь для удобства
-    stats_dict = {}
-    for activity_type, duration in completed_stats:
-        stats_dict[activity_type] = duration
+            if activity_type in stats_dict:
+                stats_dict[activity_type] += current_duration
+            else:
+                stats_dict[activity_type] = current_duration
 
     # Добавляем все активности, даже с нулевым временем
     from config import ACTIVITIES
@@ -286,6 +324,7 @@ def get_stats_last_24_hours(user_id):
 
     conn.close()
     return result
+
 
 def get_daily_stats(user_id, target_date=None):
     """
@@ -386,7 +425,26 @@ def get_daily_stats(user_id, target_date=None):
 
             # Проверяем, началась ли текущая активность в этот же день
             if start_time_local.date() == current_time_local.date():
-                current_duration = int((current_time_local - start_time_local).total_seconds())
+                # Рассчитываем продолжительность текущей активности
+                # Важно: используем ОДИНАКОВЫЕ часовые пояса для расчета!
+                if start_time_local.tzinfo is None or current_time_local.tzinfo is None:
+                    # Если нет информации о часовом поясе, считаем в UTC
+                    if start_time_local.tzinfo is None:
+                        start_time_for_calc = start_time_local.replace(tzinfo=pytz.UTC)
+                    else:
+                        start_time_for_calc = start_time_local
+
+                    if current_time_local.tzinfo is None:
+                        current_time_for_calc = current_time_local.replace(tzinfo=pytz.UTC)
+                    else:
+                        current_time_for_calc = current_time_local
+                else:
+                    # Оба времени имеют часовой пояс - используем их как есть
+                    start_time_for_calc = start_time_local
+                    current_time_for_calc = current_time_local
+
+                current_duration = int((current_time_for_calc - start_time_for_calc).total_seconds())
+
                 if activity_type in stats_dict:
                     stats_dict[activity_type] += current_duration
                 else:
