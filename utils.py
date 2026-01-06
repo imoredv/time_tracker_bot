@@ -353,3 +353,70 @@ def get_timezone_offset(timezone_code):
         return 0
     except:
         return 0
+
+
+def generate_week_bar_graph(activity_stats, user_id=None):
+    """Генерация столбчатой диаграммы для недельной статистики.
+    Каждая шкала имеет максимальную длину 24 символа (████████████████████████).
+    Длина шкалы = процент от максимального времени за неделю."""
+    if not activity_stats:
+        return ""
+
+    # Получаем текущую активность
+    current_activity = None
+    if user_id:
+        current = get_current_activity(user_id)
+        if current:
+            current_activity = current[0]
+
+    # Фильтруем и сортируем
+    filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration >= 60]
+    if not filtered_stats:
+        return ""
+
+    sorted_stats = sorted(filtered_stats, key=lambda x: x[1], reverse=True)
+
+    lines = []
+
+    # Максимальное время за неделю для процентного соотношения
+    max_duration = sorted_stats[0][1] if sorted_stats else 1
+    MAX_BAR_LENGTH = 24  # Максимальная длина шкалы
+
+    for i, (activity_type, seconds) in enumerate(sorted_stats):
+        activity_name = ACTIVITIES.get(activity_type, activity_type)
+        emoji = get_activity_emoji(activity_type)
+
+        # Форматируем время с явными единицами (часы:минуты)
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+
+        if hours > 0:
+            time_str = f"{hours}ч:{minutes:02d}м"
+        else:
+            time_str = f"{minutes}м"
+
+        # Определяем, текущая ли это активность
+        is_current = user_id and activity_type == current_activity
+
+        # Строка: эмодзи, название, время и зеленая точка если текущая
+        activity_line = f"{emoji} {activity_name} {time_str}"
+        if is_current:
+            activity_line += " 🟢"
+        lines.append(activity_line)
+
+        # Строка с бар-графом (процент от максимального)
+        if max_duration > 0:
+            percentage = seconds / max_duration
+            bar_length = int(percentage * MAX_BAR_LENGTH)
+
+            # Округляем вверх если есть хотя бы небольшая активность
+            if bar_length == 0 and seconds > 0:
+                bar_length = 1
+
+            bar_line = "█" * bar_length
+        else:
+            bar_line = ""
+
+        lines.append(bar_line if bar_line else "▌")
+
+    return "\n".join(lines)

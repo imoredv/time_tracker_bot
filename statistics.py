@@ -16,7 +16,7 @@ from utils import (
     get_activity_emoji,
     generate_activity_graph_with_dates,
     generate_bar_graph_period,
-    format_duration_for_statistics
+    format_duration_for_statistics, generate_week_bar_graph
 )
 
 
@@ -121,7 +121,9 @@ async def get_week_statistics(user_id):
 
     # Фильтруем активности больше 1 минуты
     filtered_stats = [(act_type, duration) for act_type, duration in activity_stats if duration >= 60]
-    bar_graph = generate_bar_graph_period(filtered_stats, user_id)
+
+    # Используем новую функцию для недельного графика
+    bar_graph = generate_week_bar_graph(filtered_stats, user_id)
 
     total_seconds = sum(duration for _, duration in filtered_stats)
     hours = total_seconds // 3600
@@ -135,7 +137,16 @@ async def get_week_statistics(user_id):
         current_duration = int((datetime.now() - start_time_dt).total_seconds())
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
-        time_str = format_duration_for_statistics(current_duration)
+
+        # Форматируем текущую активность как часы:минуты
+        hours_curr = current_duration // 3600
+        minutes_curr = (current_duration % 3600) // 60
+
+        if hours_curr > 0:
+            time_str = f"{hours_curr}ч:{minutes_curr:02d}м"
+        else:
+            time_str = f"{minutes_curr}м"
+
         message_text += f"Текущая: {emoji} {activity_name} {time_str}\n\n"
     else:
         message_text += "Текущая: Нет активной задачи\n\n"
