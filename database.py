@@ -462,8 +462,9 @@ def get_period_stats(user_id, period_days):
 
 def get_hourly_activity_stats(user_id, days=1):
     """
-    Получение статистики активности по 30-минутным интервалам за указанное количество дней.
+    Получение статистики активности по часовым интервалам за указанное количество дней.
     С учетом часового пояса пользователя. Возвращает список кортежей (дата, статистика).
+    Теперь: 24 интервала (каждый 1 час) вместо 48 (каждый 30 минут).
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -519,7 +520,7 @@ def get_hourly_activity_stats(user_id, days=1):
 
     for day_offset in range(days):
         current_day = start_date + timedelta(days=day_offset)
-        hourly_stats = [('rest', 0)] * 48
+        hourly_stats = [('rest', 0)] * 24  # Теперь 24 часа вместо 48 получасовых интервалов
 
         for activity_type, start_time_str, duration in activities:
             # Время в базе хранится в UTC
@@ -527,7 +528,6 @@ def get_hourly_activity_stats(user_id, days=1):
 
             try:
                 # Конвертируем в локальное время пользователя
-                # Инициализируем user_tz если еще не был инициализирован
                 if 'user_tz' not in locals():
                     try:
                         import pytz
@@ -557,29 +557,29 @@ def get_hourly_activity_stats(user_id, days=1):
             except:
                 end_time_local = end_time_utc
 
-            # Разбиваем активность на 30-минутные интервалы в ЛОКАЛЬНОМ времени
+            # Разбиваем активность на часовые интервалы в ЛОКАЛЬНОМ времени
             interval_start = start_time_local
             remaining_seconds = duration
 
             while remaining_seconds > 0 and interval_start < end_time_local:
                 hour = interval_start.hour
-                minute = interval_start.minute
-                interval_num = (hour * 2) + (minute // 30)
+                interval_num = hour  # Теперь напрямую час = номер интервала (0-23)
 
-                if interval_num < 0 or interval_num >= 48:
+                if interval_num < 0 or interval_num >= 24:
                     break
 
                 interval_end_time = interval_start.replace(
-                    minute=(minute // 30) * 30,
+                    minute=0,
                     second=0,
                     microsecond=0
-                ) + timedelta(minutes=30)
+                ) + timedelta(hours=1)
 
                 seconds_in_interval = min(
                     remaining_seconds,
                     (min(interval_end_time, end_time_local) - interval_start).total_seconds()
                 )
 
+                # Выбираем активность с максимальным временем в этом часе
                 if seconds_in_interval > hourly_stats[interval_num][1]:
                     hourly_stats[interval_num] = (activity_type, seconds_in_interval)
 
@@ -890,7 +890,7 @@ def debug_user_settings(user_id):
     settings = cursor.fetchone()
     conn.close()
 
-    if settings:
+    if settings: 
         return f"""
         Настройки пользователя {user_id}:
         • Интервал: {settings[0]} сек ({settings[0] // 60} мин)

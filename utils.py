@@ -204,7 +204,8 @@ def format_all_settings(user_id):
 def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
     """
     Генерация графиков активности с полными датами в формате ДД.ММ.ГГГГ.
-    Теперь получает список кортежей (дата, статистика).
+    Теперь получает список кортежей (дата, статистика) с 24 часовыми интервалами.
+    Выводится одна строка из 24 символов на день.
     """
     if not days_stats_with_dates or days <= 0:
         return ""
@@ -226,33 +227,20 @@ def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
         date_str = day_date.strftime("%d.%m.%Y")
         graph_lines.append(date_str)
 
-        # Создаем график
-        line1 = ""  # 00:00-12:00
+        # Создаем график из 24 символов (каждый символ = 1 час)
+        timeline = ""
         for i in range(24):
             activity_type, seconds = day_stats[i]
             if seconds > 0:
                 if activity_type == 'sleep':
-                    line1 += '▁'
+                    timeline += '▁'
                 else:
                     symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
-                    line1 += symbol
+                    timeline += symbol
             else:
-                line1 += '▁'
+                timeline += '▁'
 
-        line2 = ""  # 12:00-24:00
-        for i in range(24, 48):
-            activity_type, seconds = day_stats[i]
-            if seconds > 0:
-                if activity_type == 'sleep':
-                    line2 += '▁'
-                else:
-                    symbol = ACTIVITY_SYMBOLS.get(activity_type, '▂')
-                    line2 += symbol
-            else:
-                line2 += '▁'
-
-        graph_lines.append(line1)
-        graph_lines.append(line2)
+        graph_lines.append(timeline)
 
     return "\n".join(graph_lines)
 
