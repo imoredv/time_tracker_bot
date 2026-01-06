@@ -32,19 +32,15 @@ def format_duration_simple(seconds):
 
 
 def format_duration_for_statistics(seconds):
-    """Форматирование времени для статистики (дни:часы:минуты в формате ДДд:ЧЧч:ММм)."""
-    days = seconds // 86400  # 86400 секунд в сутках
-    hours = (seconds % 86400) // 3600
+    """Форматирование времени для статистики (часы:минуты в формате ЧЧч:ММм)."""
+    hours = seconds // 3600
     minutes = (seconds % 3600) // 60
 
-    if days > 0:
-        # Дни:часы:минуты (например: 2д:0ч:28м)
-        return f"{days}д:{hours:02d}ч:{minutes:02d}м"
-    elif hours > 0:
-        # Часы:минуты (например: 6ч:11м)
+    if hours > 0:
+        # Часы:минуты (например: 8ч:36м)
         return f"{hours}ч:{minutes:02d}м"
     else:
-        # Только минуты (например: 13м)
+        # Только минуты (например: 24м)
         return f"{minutes}м"
 
 
@@ -246,7 +242,8 @@ def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
 
 
 def generate_bar_graph_period(activity_stats, user_id=None):
-    """Генерация столбчатой диаграммы для статистики."""
+    """Генерация столбчатой диаграммы для статистики.
+    Теперь каждый символ █ = 30 минут (1800 секунд) активности."""
     if not activity_stats:
         return ""
 
@@ -257,7 +254,7 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         if current:
             current_activity = current[0]
 
-    # Фильтруем и сортируем (дополнительная фильтрация, но основная уже в statistics.py)
+    # Фильтруем и сортируем
     filtered_stats = [(atype, duration) for atype, duration in activity_stats if duration >= 60]
     if not filtered_stats:
         return ""
@@ -266,14 +263,15 @@ def generate_bar_graph_period(activity_stats, user_id=None):
 
     lines = []
 
-    # Находим максимальное время
-    max_duration = sorted_stats[0][1] if sorted_stats else 1
+    # НЕ используем максимальное время для пропорции
+    # Вместо этого: 1 символ = 30 минут (1800 секунд)
+    SECONDS_PER_BLOCK = 1800  # 30 минут в секундах
 
     for i, (activity_type, seconds) in enumerate(sorted_stats):
         activity_name = ACTIVITIES.get(activity_type, activity_type)
         emoji = get_activity_emoji(activity_type)
 
-        # Форматируем время с явными единицами (новый формат: ДДд:ЧЧч:ММм)
+        # Форматируем время с явными единицами
         time_str = format_duration_for_statistics(seconds)
 
         # Определяем, текущая ли это активность
@@ -286,21 +284,32 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         lines.append(activity_line)
 
         # Строка с бар-графом
-        width_fraction = seconds / max_duration
-        width = int(width_fraction * 12)
+        # Количество полных блоков по 30 минут
+        num_full_blocks = seconds // SECONDS_PER_BLOCK
 
-        if width == 0 and seconds > 0:
-            if width_fraction >= 0.04:
-                width = 1
+        # Остаток для определения частичного блока
+        remainder = seconds % SECONDS_PER_BLOCK
+
+        # Если есть хотя бы 15 минут (половина блока) - добавляем частичный блок
+        has_half_block = remainder >= 900  # 15 минут = 900 секунд
+
+        if num_full_blocks == 0:
+            if seconds > 0:
+                # Меньше 30 минут, но больше 0
+                if has_half_block and seconds >= 900:
+                    bar_line = "▌"  # Половина блока для >15 минут
+                elif seconds >= 60:  # Хотя бы 1 минута
+                    bar_line = "▌"  # Маленький блок
+                else:
+                    bar_line = ""  # Слишком мало
             else:
-                width = 0
-
-        if width == 0:
-            bar_line = "▌"
+                bar_line = ""
         else:
-            bar_line = "█" * width
+            bar_line = "█" * num_full_blocks
+            if has_half_block:
+                bar_line += "▌"  # Добавляем половину блока
 
-        lines.append(bar_line)
+        lines.append(bar_line if bar_line else "▌")
 
     return "\n".join(lines)
 
