@@ -523,6 +523,7 @@ def get_hourly_activity_stats(user_id, days=1):
     Получение статистики активности по часовым интервалам за указанное количество дней.
     С учетом часового пояса пользователя. Возвращает список кортежей (дата, статистика).
     Теперь: 24 интервала (каждый 1 час) вместо 48 (каждый 30 минут).
+    Для текущего дня возвращает только прошедшие часы.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -554,9 +555,11 @@ def get_hourly_activity_stats(user_id, days=1):
         user_tz = pytz.timezone(user_tz_name)
         user_now = datetime.now(user_tz)
         current_date = user_now.date()
+        current_hour = user_now.hour  # Текущий час в часовом поясе пользователя
     except:
         user_now = datetime.utcnow()
         current_date = user_now.date()
+        current_hour = user_now.hour
 
     start_date = current_date - timedelta(days=days - 1)
 
@@ -578,7 +581,11 @@ def get_hourly_activity_stats(user_id, days=1):
 
     for day_offset in range(days):
         current_day = start_date + timedelta(days=day_offset)
-        hourly_stats = [('rest', 0)] * 24  # Теперь 24 часа вместо 48 получасовых интервалов
+        is_today = current_day == current_date
+
+        # Для текущего дня показываем только прошедшие часы
+        hours_to_show = current_hour if is_today else 24
+        hourly_stats = [('rest', 0)] * hours_to_show  # Только прошедшие часы для сегодня
 
         for activity_type, start_time_str, duration in activities:
             # Время в базе хранится в UTC
@@ -621,6 +628,11 @@ def get_hourly_activity_stats(user_id, days=1):
 
             while remaining_seconds > 0 and interval_start < end_time_local:
                 hour = interval_start.hour
+
+                # Проверяем, не выходит ли час за пределы прошедших часов (для сегодня)
+                if is_today and hour >= hours_to_show:
+                    break
+
                 interval_num = hour  # Теперь напрямую час = номер интервала (0-23)
 
                 if interval_num < 0 or interval_num >= 24:

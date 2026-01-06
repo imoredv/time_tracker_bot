@@ -211,37 +211,23 @@ def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
     graph_lines = []
 
     for day_date, day_stats in days_stats_with_dates:
-        # Проверяем, сегодня ли это
-        is_today = day_date == datetime.now().date()
-
-        # Получаем текущий час для сегодняшнего дня
-        current_hour = datetime.now().hour if is_today else 24
-
         # Проверяем, есть ли активность в этом дне
         day_has_activity = False
-        for i, (activity_type, seconds) in enumerate(day_stats):
-            # Для текущего дня проверяем только прошедшие часы
-            if is_today and i >= current_hour:
-                continue
+        for activity_type, seconds in day_stats:
             if seconds > 0 and activity_type != 'rest':
                 day_has_activity = True
                 break
 
-        if not day_has_activity and not is_today:
+        if not day_has_activity:
             continue
 
         # Форматируем дату в формате ДД.ММ.ГГГГ
         date_str = day_date.strftime("%d.%m.%Y")
         graph_lines.append(date_str)
 
-        # Создаем график из 24 символов (каждый символ = 1 час)
+        # Создаем график из символов (столько символов, сколько часов в day_stats)
         timeline = ""
-        for i in range(24):
-            # Для текущего дня показываем только прошедшие часы
-            if is_today and i >= current_hour:
-                break
-
-            activity_type, seconds = day_stats[i]
+        for activity_type, seconds in day_stats:
             if seconds > 0:
                 if activity_type == 'sleep':
                     timeline += '▁'
