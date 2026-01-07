@@ -226,7 +226,7 @@ def start_activity(user_id, activity_type):
 def get_stats_last_24_hours(user_id):
     """
     Статистика за последние 24 часа с учетом текущей активности.
-    Улучшенная версия с правильной обработкой часовых поясов.
+    Учитывает все 24 часа, включая промежутки между активностями.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -260,89 +260,111 @@ def get_stats_last_24_hours(user_id):
         user_now = datetime.now(user_tz)
         time_24_hours_ago = user_now - timedelta(hours=24)
         time_24_hours_ago_utc = time_24_hours_ago.astimezone(pytz.UTC)
-
-        print(f"DEBUG: Пользователь {user_id}, часовой пояс: {user_tz_name}")
-        print(f"DEBUG: Локальное время сейчас: {user_now}")
-        print(f"DEBUG: 24 часа назад (локальное): {time_24_hours_ago}")
-        print(f"DEBUG: 24 часа назад (UTC): {time_24_hours_ago_utc}")
     except Exception as e:
         print(f"Ошибка определения времени 24 часа назад: {e}")
         user_now = datetime.utcnow()
         time_24_hours_ago = user_now - timedelta(hours=24)
         time_24_hours_ago_utc = time_24_hours_ago
 
-    # Получаем завершенные активности за последние 24 часа
+    # Получаем ВСЕ активности за последние 24 часа, включая текущую
     cursor.execute('''
-        SELECT activity_type, start_time, duration_seconds
+        SELECT activity_type, start_time, 
+               COALESCE(duration_seconds, 
+                       strftime('%s', 'now') - strftime('%s', start_time)) as duration
         FROM activities 
         WHERE user_id = ? 
           AND start_time >= ?
-          AND duration_seconds IS NOT NULL
+        ORDER BY start_time
     ''', (user_id, time_24_hours_ago_utc.isoformat()))
 
-    completed_activities = cursor.fetchall()
-
-    print(f"DEBUG: Завершенные активности за 24 часа: {len(completed_activities)}")
-
-    # Словарь для статистики
-    stats_dict = {}
-
-    # Обрабатываем завершенные активности
-    for activity_type, start_time_str, duration_seconds in completed_activities:
-        print(f"DEBUG: Активность {activity_type}: {duration_seconds} сек")
-        if activity_type in stats_dict:
-            stats_dict[activity_type] += duration_seconds
-        else:
-            stats_dict[activity_type] = duration_seconds
-
-    # Добавляем текущую активность, если она есть и началась в последние 24 часа
-    cursor.execute('''
-        SELECT activity_type, start_time 
-        FROM activities 
-        WHERE user_id = ? AND end_time IS NULL
-        LIMIT 1
-    ''', (user_id,))
-
-    current_activity = cursor.fetchone()
-
-    if current_activity:
-        activity_type, start_time_str = current_activity
-        start_time_utc = datetime.fromisoformat(start_time_str)
-
-        try:
-            # Конвертируем время начала в часовой пояс пользователя
-            if 'user_tz' in locals():
-                start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
-            else:
-                start_time_local = start_time_utc
-        except:
-            start_time_local = start_time_utc
-
-        # Проверяем, началась ли текущая активность в последние 24 часа
-        if start_time_local >= time_24_hours_ago:
-            # Рассчитываем продолжительность текущей активности
-            # Используем ЛОКАЛЬНОЕ время пользователя для расчета
-            current_duration = int((user_now - start_time_local).total_seconds())
-            print(f"DEBUG: Текущая активность {activity_type}: {current_duration} сек")
-
-            if activity_type in stats_dict:
-                stats_dict[activity_type] += current_duration
-            else:
-                stats_dict[activity_type] = current_duration
-
+    all_activities = cursor.fetchall()
     conn.close()
 
-    # Добавляем все активности, даже с нулевым временем
+    print(f"DEBUG: Всего активностей за 24 часа: {len(all_activities)}")
+
+    # Словарь для статистики
+    stats_dict = {
+        'work': 0,
+        'study': 0,
+        'sport': 0,
+        'hobby': 0,
+        'sleep': 0,
+        'rest': 0
+    }
+
+    # Обрабатываем активности
+    previous_end_time = time_24_hours_ago
+    total_tracked_time = 0
+
+    for i, (activity_type, start_time_str, duration) in enumerate(all_activities):
+        start_time_utc = datetime.fromisoformat(start_time_str)
+        end_time_utc = start_time_utc + timedelta(seconds=duration)
+
+        try:
+            if 'user_tz' in locals():
+                start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                end_time_local = end_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+            else:
+                start_time_local = start_time_utc
+                end_time_local = end_time_utc
+        except:
+            start_time_local = start_time_utc
+            end_time_local = end_time_utc
+
+        # Добавляем промежуток между активностями как отдых
+        if start_time_local > previous_end_time:
+            gap_duration = int((start_time_local - previous_end_time).total_seconds())
+            if gap_duration > 0:
+                stats_dict['rest'] += gap_duration
+                print(f"DEBUG: Промежуток отдыха {i}: {gap_duration} сек")
+
+        # Добавляем саму активность
+        stats_dict[activity_type] += duration
+        total_tracked_time += duration
+
+        # Обновляем время окончания для следующей проверки
+        previous_end_time = end_time_local
+
+        print(f"DEBUG: Активность {i} {activity_type}: {duration} сек")
+
+    # Добавляем время от последней активности до текущего момента как отдых
+    if user_now > previous_end_time:
+        final_gap = int((user_now - previous_end_time).total_seconds())
+        if final_gap > 0:
+            stats_dict['rest'] += final_gap
+            print(f"DEBUG: Финальный промежуток отдыха: {final_gap} сек")
+
+    # Проверяем, что учтены все 24 часа
+    total_seconds = sum(stats_dict.values())
+    expected_seconds = 24 * 3600  # 24 часа в секундах
+    missing_seconds = expected_seconds - total_seconds
+
+    print(f"DEBUG: Всего учтено: {total_seconds} сек")
+    print(f"DEBUG: Ожидалось: {expected_seconds} сек")
+    print(f"DEBUG: Не хватает: {missing_seconds} сек")
+
+    # Если есть незаполненное время, добавляем как отдых
+    if missing_seconds > 0:
+        stats_dict['rest'] += missing_seconds
+        print(f"DEBUG: Добавлено отдыха за пропущенное время: {missing_seconds} сек")
+
+    # Корректируем статистику - не может быть больше 24 часов
+    total_seconds = sum(stats_dict.values())
+    if total_seconds > expected_seconds:
+        # Если перебор, уменьшаем отдых
+        excess = total_seconds - expected_seconds
+        stats_dict['rest'] = max(0, stats_dict['rest'] - excess)
+        print(f"DEBUG: Уменьшено отдыха на перебор: {excess} сек")
+
     from config import ACTIVITIES
     result = []
-    total_seconds_all = 0
+    total_final = 0
     for activity_type in ACTIVITIES.keys():
         duration = stats_dict.get(activity_type, 0)
-        total_seconds_all += duration
+        total_final += duration
         result.append((activity_type, duration))
 
-    print(f"DEBUG: Всего секунд в статистике: {total_seconds_all}")
-    print(f"DEBUG: Всего часов: {total_seconds_all // 3600}ч {total_seconds_all % 3600 // 60}м")
+    print(f"DEBUG: Финальная статистика: {total_final} сек = {total_final // 3600}ч:{total_final % 3600 // 60}м")
 
     # Сортируем по убыванию времени
     result.sort(key=lambda x: x[1], reverse=True)
