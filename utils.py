@@ -267,10 +267,13 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         # Определяем, текущая ли это активность
         is_current = user_id and activity_type == current_activity
 
-        # Строка: эмодзи, название, время и зеленая точка если текущая
+        # Строка: эмодзи, название, время
         activity_line = f"{emoji} {activity_name} {time_str}"
-        if is_current:
-            activity_line += " 🟢"
+
+        # Добавляем метку текущей активности (только если это текущая активность)
+        # Убрана зеленая точка 🟢 из общего отображения
+        # Для "Сегодня" будет добавляться отдельно в statistics.py
+
         lines.append(activity_line)
 
         # Строка с бар-графом
@@ -280,7 +283,7 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         # Остаток для определения частичного блока
         remainder = seconds % SECONDS_PER_BLOCK
 
-        # Если есть хотя бы 30 минут (половина часа) - добавляем частичный блок
+        # Если есть хотя бы 30 минут (половина часа) - добавляем частичный блока
         has_half_block = remainder >= 1800  # 30 минут = 1800 секунд
 
         if num_full_blocks == 0:

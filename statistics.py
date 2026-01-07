@@ -52,6 +52,7 @@ async def get_daily_statistics(user_id):
 
         # Текущая активность
         current = get_current_activity(user_id)
+        current_activity_type = current[0] if current else None
 
         # Форматирование
         message_text = "📊 Суточная статистика:\n\n"
@@ -73,8 +74,7 @@ async def get_daily_statistics(user_id):
 
         # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
         if filtered_24h:
-            bar_graph_24h = generate_bar_graph_period(filtered_24h,
-                                                      user_id)  # Передаем user_id для проверки текущей активности
+            bar_graph_24h = generate_bar_graph_period(filtered_24h, user_id)
             if bar_graph_24h:
                 message_text += bar_graph_24h
         else:
@@ -89,11 +89,45 @@ async def get_daily_statistics(user_id):
         filtered_today = [(act_type, duration) for act_type, duration in stats_today if duration >= 60]
 
         if filtered_today:
-            bar_graph_today = generate_bar_graph_period(filtered_today, user_id)
-            if bar_graph_today:
-                message_text += bar_graph_today
-            else:
-                message_text += "Нет данных за сегодня"
+            # Формируем статистику "Сегодня" с зеленой галочкой для текущей активности
+            today_lines = []
+            for act_type, duration in filtered_today:
+                activity_name = ACTIVITIES.get(act_type, act_type)
+                emoji = get_activity_emoji(act_type)
+                time_str = format_duration_for_statistics(duration)
+
+                # Добавляем зеленую галочку только если это текущая активность
+                if act_type == current_activity_type:
+                    activity_line = f"{emoji} {activity_name} {time_str} ✅"
+                else:
+                    activity_line = f"{emoji} {activity_name} {time_str}"
+
+                today_lines.append(activity_line)
+
+                # Добавляем бар-граф
+                SECONDS_PER_BLOCK = 3600
+                num_full_blocks = duration // SECONDS_PER_BLOCK
+                remainder = duration % SECONDS_PER_BLOCK
+                has_half_block = remainder >= 1800
+
+                if num_full_blocks == 0:
+                    if duration > 0:
+                        if has_half_block and duration >= 1800:
+                            bar_line = "▌"
+                        elif duration >= 60:
+                            bar_line = "▌"
+                        else:
+                            bar_line = ""
+                    else:
+                        bar_line = ""
+                else:
+                    bar_line = "█" * num_full_blocks
+                    if has_half_block:
+                        bar_line += "▌"
+
+                today_lines.append(bar_line if bar_line else "▌")
+
+            message_text += "\n".join(today_lines)
         else:
             message_text += "Нет данных за сегодня"
 
