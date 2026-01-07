@@ -211,16 +211,6 @@ def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
     graph_lines = []
 
     for day_date, day_stats in days_stats_with_dates:
-        # Проверяем, есть ли активность в этом дне
-        day_has_activity = False
-        for activity_type, seconds in day_stats:
-            if seconds > 0 and activity_type != 'rest':
-                day_has_activity = True
-                break
-
-        if not day_has_activity:
-            continue
-
         # Форматируем дату в формате ДД.ММ.ГГГГ
         date_str = day_date.strftime("%d.%m.%Y")
         graph_lines.append(date_str)

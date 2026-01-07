@@ -28,7 +28,7 @@ async def get_daily_statistics(user_id):
         # Получаем сегодняшнюю дату в часовом поясе пользователя
         today_date = get_user_current_date(user_id)
 
-        # Статистика за 2 дня для графиков (вчера и позавчера)
+        # Статистика за 2 дня для графиков (вчера и сегодня)
         hourly_stats_with_dates = get_hourly_activity_stats(user_id, 2)
 
         # Статистика за 24 часа
@@ -60,7 +60,7 @@ async def get_daily_statistics(user_id):
 
         # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
         if filtered_24h:
-            bar_graph_24h = generate_bar_graph_period(filtered_24h, None)  # Передаем None чтобы убрать зеленую точку
+            bar_graph_24h = generate_bar_graph_period(filtered_24h, user_id)  # Передаем user_id для проверки текущей активности
             if bar_graph_24h:
                 message_text += bar_graph_24h
         else:
@@ -101,6 +101,12 @@ async def get_daily_statistics(user_id):
             message_text += "\n\n❌ " + ", ".join(unused_activities)
 
         return message_text
+
+    except Exception as e:
+        print(f"❌ Ошибка в get_daily_statistics: {e}")
+        import traceback
+        traceback.print_exc()
+        return "⚠️ Произошла ошибка при получении статистики. Попробуйте позже."
 
     except Exception as e:
         print(f"❌ Ошибка в get_daily_statistics: {e}")
