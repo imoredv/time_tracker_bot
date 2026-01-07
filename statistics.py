@@ -165,7 +165,25 @@ async def get_week_statistics(user_id):
     activity_stats = get_total_stats_by_activity(user_id, 7)
     current = get_current_activity(user_id)
 
-    timeline_graph = generate_activity_graph_with_dates(hourly_stats, 7)
+    # Фильтруем ТОЛЬКО полностью пустые дни (нет никакой активности)
+    filtered_hourly_stats = []
+    for day_date, day_stats in hourly_stats:
+        # Проверяем, есть ли хоть какая-то активность в этот день
+        has_any_activity = False
+        for _, seconds in day_stats:
+            if seconds > 0:  # Есть активность (любая, включая сон)
+                has_any_activity = True
+                break
+
+        # Если есть хоть какая-то активность - включаем день в статистику
+        if has_any_activity:
+            filtered_hourly_stats.append((day_date, day_stats))
+
+    # Если после фильтрации нет дней, показываем сообщение
+    if not filtered_hourly_stats:
+        timeline_graph = "Нет данных за неделю"
+    else:
+        timeline_graph = generate_activity_graph_with_dates(filtered_hourly_stats, len(filtered_hourly_stats))
 
     # Фильтруем активности больше 1 минуты
     filtered_stats = [(act_type, duration) for act_type, duration in activity_stats if duration >= 60]
@@ -199,7 +217,7 @@ async def get_week_statistics(user_id):
     else:
         message_text += "Текущая: Нет активной задачи\n\n"
 
-    if timeline_graph and timeline_graph.strip():
+    if timeline_graph and timeline_graph.strip() and timeline_graph != "Нет данных за неделю":
         message_text += timeline_graph
         message_text += "\n\n"
 
