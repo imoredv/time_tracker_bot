@@ -244,7 +244,7 @@ def generate_activity_graph_with_dates(days_stats_with_dates, days=1):
 
 def generate_bar_graph_period(activity_stats, user_id=None):
     """Генерация столбчатой диаграммы для статистики.
-    Теперь каждый символ █ = 30 минут (1800 секунд) активности."""
+    Теперь каждый символ █ = 1 час (3600 секунд) активности."""
     if not activity_stats:
         return ""
 
@@ -264,9 +264,8 @@ def generate_bar_graph_period(activity_stats, user_id=None):
 
     lines = []
 
-    # НЕ используем максимальное время для пропорции
-    # Вместо этого: 1 символ = 30 минут (1800 секунд)
-    SECONDS_PER_BLOCK = 1800  # 30 минут в секундах
+    # 1 символ = 1 час (3600 секунд)
+    SECONDS_PER_BLOCK = 3600  # 1 час в секундах
 
     for i, (activity_type, seconds) in enumerate(sorted_stats):
         activity_name = ACTIVITIES.get(activity_type, activity_type)
@@ -285,20 +284,20 @@ def generate_bar_graph_period(activity_stats, user_id=None):
         lines.append(activity_line)
 
         # Строка с бар-графом
-        # Количество полных блоков по 30 минут
+        # Количество полных блоков по 1 часу
         num_full_blocks = seconds // SECONDS_PER_BLOCK
 
         # Остаток для определения частичного блока
         remainder = seconds % SECONDS_PER_BLOCK
 
-        # Если есть хотя бы 15 минут (половина блока) - добавляем частичный блок
-        has_half_block = remainder >= 900  # 15 минут = 900 секунд
+        # Если есть хотя бы 30 минут (половина часа) - добавляем частичный блок
+        has_half_block = remainder >= 1800  # 30 минут = 1800 секунд
 
         if num_full_blocks == 0:
             if seconds > 0:
-                # Меньше 30 минут, но больше 0
-                if has_half_block and seconds >= 900:
-                    bar_line = "▌"  # Половина блока для >15 минут
+                # Меньше 1 часа, но больше 0
+                if has_half_block and seconds >= 1800:
+                    bar_line = "▌"  # Половина блока для >30 минут
                 elif seconds >= 60:  # Хотя бы 1 минута
                     bar_line = "▌"  # Маленький блок
                 else:
@@ -359,7 +358,8 @@ def get_timezone_offset(timezone_code):
 def generate_week_bar_graph(activity_stats, user_id=None):
     """Генерация столбчатой диаграммы для недельной статистики.
     Каждая шкала имеет максимальную длину 24 символа (████████████████████████).
-    Длина шкалы = процент от максимального времени за неделю."""
+    Длина шкалы = процент от максимального времени за неделю.
+    При этом 1 символ █ = примерно 1 час в максимальной активности."""
     if not activity_stats:
         return ""
 
