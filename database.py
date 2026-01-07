@@ -4,7 +4,7 @@
 
 import sqlite3
 import os
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, dateы
 from config import DB_NAME
 
 def get_db_path():
