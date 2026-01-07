@@ -570,6 +570,7 @@ def get_hourly_activity_stats(user_id, days=1):
     С учетом часового пояса пользователя. Возвращает список кортежей (дата, статистика).
     Теперь: 24 интервала (каждый 1 час) вместо 48 (каждый 30 минут).
     Для текущего дня возвращает только прошедшие часы.
+    Возвращает только дни, в которых есть реальные данные из базы.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -625,38 +626,61 @@ def get_hourly_activity_stats(user_id, days=1):
 
     days_stats_with_dates = []
 
+    # Создаем словарь для группировки активностей по дням
+    activities_by_day = {}
+
+    for activity_type, start_time_str, duration in activities:
+        # Время в базе хранится в UTC
+        start_time_utc = datetime.fromisoformat(start_time_str)
+
+        try:
+            # Конвертируем в локальное время пользователя
+            if 'user_tz' not in locals():
+                try:
+                    import pytz
+                    user_tz = pytz.timezone(user_tz_name)
+                except:
+                    user_tz = None
+
+            if user_tz:
+                start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+            else:
+                start_time_local = start_time_utc
+        except Exception as e:
+            print(f"Ошибка конвертации времени: {e}")
+            start_time_local = start_time_utc
+
+        # Группируем по дням
+        day_key = start_time_local.date()
+        if day_key not in activities_by_day:
+            activities_by_day[day_key] = []
+        activities_by_day[day_key].append((activity_type, start_time_str, duration))
+
+    # Теперь обрабатываем только те дни, для которых есть данные
     for day_offset in range(days):
         current_day = start_date + timedelta(days=day_offset)
         is_today = current_day == current_date
+
+        # Проверяем, есть ли данные для этого дня
+        if current_day not in activities_by_day:
+            continue  # Пропускаем дни без данных
 
         # Для текущего дня показываем только прошедшие часы
         hours_to_show = current_hour if is_today else 24
         hourly_stats = [('rest', 0)] * hours_to_show  # Только прошедшие часы для сегодня
 
-        for activity_type, start_time_str, duration in activities:
-            # Время в базе хранится в UTC
+        day_activities = activities_by_day[current_day]
+
+        for activity_type, start_time_str, duration in day_activities:
             start_time_utc = datetime.fromisoformat(start_time_str)
 
             try:
-                # Конвертируем в локальное время пользователя
-                if 'user_tz' not in locals():
-                    try:
-                        import pytz
-                        user_tz = pytz.timezone(user_tz_name)
-                    except:
-                        user_tz = None
-
                 if user_tz:
                     start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
                 else:
                     start_time_local = start_time_utc
-            except Exception as e:
-                print(f"Ошибка конвертации времени: {e}")
+            except:
                 start_time_local = start_time_utc
-
-            # Проверяем, относится ли активность к текущему дню в локальном времени
-            if start_time_local.date() != current_day:
-                continue
 
             end_time_utc = start_time_utc + timedelta(seconds=duration)
 
