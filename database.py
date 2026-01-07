@@ -648,6 +648,7 @@ def get_hourly_activity_stats(user_id, days=1):
                 if interval_num < 0 or interval_num >= 24:
                     break
 
+                # Увеличиваем счетчик секунд в этом часе, а не заменяем
                 interval_end_time = interval_start.replace(
                     minute=0,
                     second=0,
@@ -659,14 +660,23 @@ def get_hourly_activity_stats(user_id, days=1):
                     (min(interval_end_time, end_time_local) - interval_start).total_seconds()
                 )
 
-                # Выбираем активность с максимальным временем в этом часе
-                if seconds_in_interval > hourly_stats[interval_num][1]:
-                    hourly_stats[interval_num] = (activity_type, seconds_in_interval)
+                # Суммируем секунды в этом часе, а не берем максимум
+                current_seconds = hourly_stats[interval_num][1]
+                hourly_stats[interval_num] = (activity_type, current_seconds + seconds_in_interval)
 
                 interval_start = interval_end_time
                 remaining_seconds -= seconds_in_interval
 
-        days_stats_with_dates.append((current_day, hourly_stats))
+        # После обработки всех активностей, для каждого часа выбираем доминирующую активность
+        processed_hourly_stats = []
+        for activity_type, total_seconds in hourly_stats:
+            if total_seconds > 0:
+                # Для графика используем доминирующую активность (самую долгую в этом часе)
+                processed_hourly_stats.append((activity_type, total_seconds))
+            else:
+                processed_hourly_stats.append(('rest', 0))
+
+        days_stats_with_dates.append((current_day, processed_hourly_stats))
 
     return days_stats_with_dates
 
