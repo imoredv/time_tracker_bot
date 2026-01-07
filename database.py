@@ -260,6 +260,11 @@ def get_stats_last_24_hours(user_id):
         user_now = datetime.now(user_tz)
         time_24_hours_ago = user_now - timedelta(hours=24)
         time_24_hours_ago_utc = time_24_hours_ago.astimezone(pytz.UTC)
+
+        print(f"DEBUG: Пользователь {user_id}, часовой пояс: {user_tz_name}")
+        print(f"DEBUG: Локальное время сейчас: {user_now}")
+        print(f"DEBUG: 24 часа назад (локальное): {time_24_hours_ago}")
+        print(f"DEBUG: 24 часа назад (UTC): {time_24_hours_ago_utc}")
     except Exception as e:
         print(f"Ошибка определения времени 24 часа назад: {e}")
         user_now = datetime.utcnow()
@@ -277,11 +282,14 @@ def get_stats_last_24_hours(user_id):
 
     completed_activities = cursor.fetchall()
 
+    print(f"DEBUG: Завершенные активности за 24 часа: {len(completed_activities)}")
+
     # Словарь для статистики
     stats_dict = {}
 
     # Обрабатываем завершенные активности
     for activity_type, start_time_str, duration_seconds in completed_activities:
+        print(f"DEBUG: Активность {activity_type}: {duration_seconds} сек")
         if activity_type in stats_dict:
             stats_dict[activity_type] += duration_seconds
         else:
@@ -315,6 +323,7 @@ def get_stats_last_24_hours(user_id):
             # Рассчитываем продолжительность текущей активности
             # Используем ЛОКАЛЬНОЕ время пользователя для расчета
             current_duration = int((user_now - start_time_local).total_seconds())
+            print(f"DEBUG: Текущая активность {activity_type}: {current_duration} сек")
 
             if activity_type in stats_dict:
                 stats_dict[activity_type] += current_duration
@@ -326,9 +335,14 @@ def get_stats_last_24_hours(user_id):
     # Добавляем все активности, даже с нулевым временем
     from config import ACTIVITIES
     result = []
+    total_seconds_all = 0
     for activity_type in ACTIVITIES.keys():
         duration = stats_dict.get(activity_type, 0)
+        total_seconds_all += duration
         result.append((activity_type, duration))
+
+    print(f"DEBUG: Всего секунд в статистике: {total_seconds_all}")
+    print(f"DEBUG: Всего часов: {total_seconds_all // 3600}ч {total_seconds_all % 3600 // 60}м")
 
     # Сортируем по убыванию времени
     result.sort(key=lambda x: x[1], reverse=True)
@@ -1051,3 +1065,25 @@ def get_user_current_date(user_id):
         return user_now.date()
     except:
         return datetime.now().date()
+
+
+def debug_stats_last_24_hours(user_id):
+    """
+    Отладочная информация о статистике за 24 часа.
+    """
+    stats = get_stats_last_24_hours(user_id)
+
+    print(f"\n=== DEBUG STATS FOR USER {user_id} ===")
+    total_seconds = 0
+    for activity_type, seconds in stats:
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        print(f"{activity_type}: {seconds} сек = {hours}ч:{minutes:02d}м")
+        total_seconds += seconds
+
+    total_hours = total_seconds // 3600
+    total_minutes = (total_seconds % 3600) // 60
+    print(f"ИТОГО: {total_seconds} сек = {total_hours}ч:{total_minutes:02d}м")
+    print("===============================\n")
+
+    return stats

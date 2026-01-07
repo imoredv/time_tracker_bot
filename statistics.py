@@ -34,6 +34,19 @@ async def get_daily_statistics(user_id):
         # Статистика за 24 часа
         activity_stats_24h = get_total_stats_by_activity(user_id, 1)
 
+        # Отладочный вывод
+        print(f"\n=== DEBUG DAILY STATISTICS ===")
+        print(f"Сегодняшняя дата: {today_date}")
+        print(f"Статистика за 24 часа:")
+        total_24h = 0
+        for act_type, duration in activity_stats_24h:
+            hours = duration // 3600
+            minutes = (duration % 3600) // 60
+            print(f"  {act_type}: {duration} сек = {hours}ч:{minutes:02d}м")
+            total_24h += duration
+        print(f"ИТОГО за 24 часа: {total_24h} сек = {total_24h // 3600}ч:{total_24h % 3600 // 60}м")
+        print("==============================\n")
+
         # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
         stats_today = get_daily_stats_sorted(user_id, today_date)
 
@@ -60,7 +73,8 @@ async def get_daily_statistics(user_id):
 
         # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
         if filtered_24h:
-            bar_graph_24h = generate_bar_graph_period(filtered_24h, user_id)  # Передаем user_id для проверки текущей активности
+            bar_graph_24h = generate_bar_graph_period(filtered_24h,
+                                                      user_id)  # Передаем user_id для проверки текущей активности
             if bar_graph_24h:
                 message_text += bar_graph_24h
         else:
@@ -101,12 +115,6 @@ async def get_daily_statistics(user_id):
             message_text += "\n\n❌ " + ", ".join(unused_activities)
 
         return message_text
-
-    except Exception as e:
-        print(f"❌ Ошибка в get_daily_statistics: {e}")
-        import traceback
-        traceback.print_exc()
-        return "⚠️ Произошла ошибка при получении статистики. Попробуйте позже."
 
     except Exception as e:
         print(f"❌ Ошибка в get_daily_statistics: {e}")
