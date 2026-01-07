@@ -288,7 +288,15 @@ def get_stats_last_24_hours(user_id):
             stats_dict[activity_type] = duration_seconds
 
     # Добавляем текущую активность, если она есть и началась в последние 24 часа
-    current_activity = get_current_activity(user_id)
+    cursor.execute('''
+        SELECT activity_type, start_time 
+        FROM activities 
+        WHERE user_id = ? AND end_time IS NULL
+        LIMIT 1
+    ''', (user_id,))
+
+    current_activity = cursor.fetchone()
+
     if current_activity:
         activity_type, start_time_str = current_activity
         start_time_utc = datetime.fromisoformat(start_time_str)
@@ -305,12 +313,15 @@ def get_stats_last_24_hours(user_id):
         # Проверяем, началась ли текущая активность в последние 24 часа
         if start_time_local >= time_24_hours_ago:
             # Рассчитываем продолжительность текущей активности
+            # Используем ЛОКАЛЬНОЕ время пользователя для расчета
             current_duration = int((user_now - start_time_local).total_seconds())
 
             if activity_type in stats_dict:
                 stats_dict[activity_type] += current_duration
             else:
                 stats_dict[activity_type] = current_duration
+
+    conn.close()
 
     # Добавляем все активности, даже с нулевым временем
     from config import ACTIVITIES
@@ -322,7 +333,6 @@ def get_stats_last_24_hours(user_id):
     # Сортируем по убыванию времени
     result.sort(key=lambda x: x[1], reverse=True)
 
-    conn.close()
     return result
 
 
