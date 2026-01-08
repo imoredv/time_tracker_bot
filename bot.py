@@ -57,6 +57,29 @@ async def cmd_start(message: types.Message, state: FSMContext):
     """Команда /start - приветствие и выбор часового пояса."""
     user_id = message.from_user.id
 
+    # Получаем часовой пояс пользователя, если он уже существует
+    existing_timezone = get_user_timezone(user_id)
+
+    # Если пользователь существует и часовой пояс уже установлен (не дефолтный)
+    if existing_timezone and existing_timezone != DEFAULT_TIMEZONE:
+        # Пользователь уже есть с установленным часовым поясом
+        local_time = format_user_local_time(user_id)
+        timezone_display = get_timezone_display_name(existing_timezone)
+
+        welcome_text = (
+            f"⏱️ <b>Time Tracker Bot</b>\n\n"
+            f"Добро пожаловать! Я помогу отслеживать время.\n\n"
+            f"Часовой пояс: {timezone_display}\n"
+            f"🕒 Локальное время: {local_time}"
+        )
+
+        await message.answer(welcome_text, parse_mode="HTML",
+                             reply_markup=get_main_keyboard_with_current(user_id))
+        await state.clear()
+        return
+
+    # Если пользователя нет или часовой пояс не установлен (дефолтный)
+    # Добавляем/обновляем пользователя
     add_user(
         user_id=user_id,
         username=message.from_user.username,
@@ -77,7 +100,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
     await message.answer(welcome_text, parse_mode="HTML")
     await state.set_state(TimezoneStates.waiting_for_timezone)
-
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
