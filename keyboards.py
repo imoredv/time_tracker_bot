@@ -114,14 +114,8 @@ def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=
     """
     Клавиатура для настройки интервала напоминаний с добавлением 5 секунд для тестов.
     Преобразует минуты в часы для интервалов >= 60 минут.
+    Единственная кнопка статуса: 🔔 Включены / 🔕 Выключены
     """
-    # Кнопка статуса
-    status_text = "🔔 Вкл" if notifications_enabled else "🔕 Выкл"
-    status_button = InlineKeyboardButton(
-        text=status_text,
-        callback_data="toggle_notif"
-    )
-
     # Интервалы в секундах и их отображение
     interval_data = [
         ("5 сек", 5),
@@ -131,37 +125,53 @@ def get_reminder_interval_keyboard(current_interval=1800, notifications_enabled=
         ("1 час", 3600),
         ("2 часа", 7200),
         ("4 часа", 14400),
-        ("8 часов", 28800),
-        ("🔕 Выкл", 0)
+        ("8 часов", 28800)  # Исправлено: было "8 часа", теперь "8 часов"
     ]
 
     # Создаем кнопки (по 3 в ряд)
     interval_buttons = []
     for i in range(0, len(interval_data), 3):
         row = []
-        for display_text, interval_seconds in interval_data[i:i+3]:
+        for display_text, interval_seconds in interval_data[i:i + 3]:
+            # Добавляем зеленую галочку для текущего интервала, если уведомления включены
+            if notifications_enabled and interval_seconds == current_interval:
+                display_text = f"{display_text} ✅"
+
             row.append(InlineKeyboardButton(
                 text=display_text,
                 callback_data=f"interval_{interval_seconds}"
             ))
         interval_buttons.append(row)
 
-    # Добавляем кнопку статуса и назад
+    # Кнопка включения/выключения уведомлений
+    if notifications_enabled:
+        status_text = "🔔 Включены"
+        next_interval = 0  # При нажатии выключим
+    else:
+        status_text = "🔕 Выключены"
+        # Если уведомления выключены, предлагаем включить с последним интервалом
+        next_interval = current_interval if current_interval > 0 else 1800
+
+    status_button = InlineKeyboardButton(
+        text=status_text,
+        callback_data=f"interval_{next_interval}"
+    )
+
     interval_buttons.append([status_button])
     interval_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_settings")])
 
     return InlineKeyboardMarkup(inline_keyboard=interval_buttons)
 
 
-def get_reminder_buttons_keyboard(current_interval_minutes=None):
+def get_reminder_buttons_keyboard(current_interval_minutes=None, notifications_enabled=True):
     """
     Клавиатура с кнопками выбора интервала для напоминаний (под сообщением с напоминанием).
-    С зеленой галочкой напротив текущего интервала.
+    С зеленой галочкой напротив текущего интервала ТОЛЬКО если уведомления включены.
     Преобразует минуты в часы для интервалов >= 60 минут.
     """
     intervals = [15, 30, 60, 120, 240, 480]
 
-    # Создаем кнопки с галочками
+    # Создаем кнопки с галочками только если уведомления включены
     buttons = []
     for i in range(0, len(intervals), 3):  # По 3 кнопки в ряд
         row = []
@@ -171,9 +181,19 @@ def get_reminder_buttons_keyboard(current_interval_minutes=None):
                 button_text = f"{interval} мин"
             else:
                 hours = interval // 60
-                button_text = f"{hours} час" if hours == 1 else f"{hours} часа"
+                # Правильное склонение для часов
+                if hours == 1:
+                    button_text = "1 час"
+                elif hours == 2:
+                    button_text = "2 часа"
+                elif hours == 4:
+                    button_text = "4 часа"
+                elif hours == 8:
+                    button_text = "8 часов"
+                else:
+                    button_text = f"{hours} часов"
 
-            if current_interval_minutes and interval == current_interval_minutes:
+            if notifications_enabled and current_interval_minutes and interval == current_interval_minutes:
                 button_text += " ✅"  # Зеленая галочка
 
             row.append(InlineKeyboardButton(
@@ -185,15 +205,15 @@ def get_reminder_buttons_keyboard(current_interval_minutes=None):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_activity_reminder_keyboard(current_interval_minutes=None):
+def get_activity_reminder_keyboard(current_interval_minutes=None, notifications_enabled=True):
     """
     Клавиатура с кнопками выбора интервала уведомлений при смене активности.
-    С зеленой галочкой напротив текущего интервала.
+    С зеленой галочкой напротив текущего интервала ТОЛЬКО если уведомления включены.
     Преобразует минуты в часы для интервалов >= 60 минут.
     """
     intervals = [15, 30, 60, 120, 240, 480]
 
-    # Создаем кнопки с галочками
+    # Создаем кнопки с галочками только если уведомления включены
     buttons = []
     for i in range(0, len(intervals), 3):  # По 3 кнопки в ряд
         row = []
@@ -203,10 +223,21 @@ def get_activity_reminder_keyboard(current_interval_minutes=None):
                 button_text = f"{interval} мин"
             else:
                 hours = interval // 60
-                button_text = f"{hours} час" if hours == 1 else f"{hours} часа"
+                # Правильное склонение для часов
+                if hours == 1:
+                    button_text = "1 час"
+                elif hours == 2:
+                    button_text = "2 часа"
+                elif hours == 4:
+                    button_text = "4 часа"
+                elif hours == 8:
+                    button_text = "8 часов"
+                else:
+                    button_text = f"{hours} часов"
 
-            if current_interval_minutes and interval == current_interval_minutes:
-                button_text += " ✅"  # Зеленая галочка
+            # Добавляем зеленую галочку только если уведомления включены И это текущий интервал
+            if notifications_enabled and current_interval_minutes and interval == current_interval_minutes:
+                button_text += " ✅"
 
             row.append(InlineKeyboardButton(
                 text=button_text,

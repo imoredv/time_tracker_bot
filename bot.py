@@ -165,7 +165,6 @@ async def handle_timezone_input(message: types.Message, state: FSMContext):
 
 # ====================== ОБРАБОТЧИКИ АКТИВНОСТЕЙ ======================
 
-# bot.py
 @dp.message(F.text.in_(["💼 Труд", "💼 Труд ✅", "📚 Учёба", "📚 Учёба ✅", "🏃 Спорт", "🏃 Спорт ✅",
                         "🎨 Хобби", "🎨 Хобби ✅", "💤 Сон", "💤 Сон ✅", "☕️ Отдых", "☕️ Отдых ✅"]))
 async def handle_activity(message: types.Message, state: FSMContext):
@@ -241,10 +240,17 @@ async def handle_activity(message: types.Message, state: FSMContext):
 
         response += f"{emoji} {name} стоп\n{time_str}\n"
 
-    # Получаем текущий интервал пользователя
+    # Получаем текущие настройки пользователя
     settings = get_user_settings(user_id)
     current_interval_seconds = settings['reminder_interval'] if settings else 1800
     current_interval_minutes = current_interval_seconds // 60
+    notifications_enabled = settings['notifications_enabled'] if settings else True
+
+    # Формируем текст сообщения в зависимости от статуса уведомлений
+    if notifications_enabled:
+        reminder_text = "Уведомлять через:"
+    else:
+        reminder_text = "Уведомления отключены 🔕. Уведомлять через:"
 
     # Сразу показываем меню с галочкой на новой активности
     emoji = get_activity_emoji(act_type)
@@ -258,14 +264,15 @@ async def handle_activity(message: types.Message, state: FSMContext):
 
     # Отправляем ОТДЕЛЬНОЕ сообщение с inline-клавиатурой для выбора интервала
     reminder_msg = await message.answer(
-        "Уведомлять через:",
-        reply_markup=get_activity_reminder_keyboard(current_interval_minutes)
+        reminder_text,
+        reply_markup=get_activity_reminder_keyboard(current_interval_minutes, notifications_enabled)
     )
 
     # Сохраняем ID сообщения с клавиатурой для возможного удаления
     await state.update_data(
         activity_type=act_type,
-        reminder_message_id=reminder_msg.message_id
+        reminder_message_id=reminder_msg.message_id,
+        notifications_enabled=notifications_enabled
     )
     await state.set_state(EditStates.waiting_for_activity_reminder)
 
@@ -442,15 +449,22 @@ async def handle_interval_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     interval = int(callback.data.split("_")[1])
 
+    # Определяем состояние уведомлений на основе интервала
     if interval == 0:
+        # Выключаем уведомления
         update_user_setting(user_id, 'notifications_enabled', 0)
+        # Получаем текущий интервал для сохранения
+        settings = get_user_settings(user_id)
+        current_interval = settings['reminder_interval'] if settings and settings['reminder_interval'] > 0 else 1800
+
         await callback.message.edit_text(
-            "⏰ Напоминания\nИнтервал: Выкл\nСтатус: выключены"
+            f"⏰ Напоминания\nИнтервал: {format_interval(current_interval)}\nСтатус: выключены"
         )
         await callback.message.edit_reply_markup(
-            reply_markup=get_reminder_interval_keyboard(interval, False)
+            reply_markup=get_reminder_interval_keyboard(current_interval, False)
         )
     else:
+        # Включаем уведомления с указанным интервалом
         update_user_setting(user_id, 'reminder_interval', interval)
         update_user_setting(user_id, 'notifications_enabled', 1)
 
@@ -461,6 +475,8 @@ async def handle_interval_callback(callback: types.CallbackQuery):
         await callback.message.edit_reply_markup(
             reply_markup=get_reminder_interval_keyboard(interval, True)
         )
+
+    await callback.answer(f"Установлено: {format_interval(interval) if interval > 0 else 'Выкл'}")
 
     await callback.answer(f"Установлено: {format_interval(interval)}")
 
@@ -555,9 +571,9 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         await callback.answer(f"Ошибка: {e}", show_alert=True)
         await state.clear()
 
-@dp.callback_query(F.data == "toggle_notif")
+"""@dp.callback_query(F.data == "toggle_notif")
 async def handle_toggle_notif(callback: types.CallbackQuery):
-    """Переключение уведомлений."""
+    """"""Переключение уведомлений.""""""
     user_id = callback.from_user.id
     settings = get_user_settings(user_id)
 
@@ -573,7 +589,7 @@ async def handle_toggle_notif(callback: types.CallbackQuery):
             f"⏰ Напоминания\nИнтервал: {interval_text}\nСтатус: {status_text}",
             reply_markup=get_reminder_interval_keyboard(interval, bool(new_value))
         )
-    await callback.answer()
+    await callback.answer()"""
 
 
 @dp.callback_query(F.data == "toggle_quiet")

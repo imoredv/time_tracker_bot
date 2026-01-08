@@ -250,7 +250,6 @@ class ReminderManager:
 
         return False
 
-    # reminder.py (в функции send_reminder_with_buttons)
     async def send_reminder_with_buttons(self, user_id: int):
         """
         Отправка напоминания с кнопками выбора интервала.
@@ -262,6 +261,7 @@ class ReminderManager:
             settings = get_user_settings(user_id)
             current_interval_seconds = settings['reminder_interval'] if settings else 1800
             current_interval_minutes = current_interval_seconds // 60
+            notifications_enabled = settings['notifications_enabled'] if settings else True
 
             if current_activity:
                 # Получаем название активности
@@ -286,18 +286,30 @@ class ReminderManager:
                 else:
                     time_str = f"{minutes}м:{seconds:02d}с"
 
+                # Формируем текст в зависимости от статуса уведомлений
+                if notifications_enabled:
+                    reminder_text = f"{emoji} {activity_name}?\n{time_str}\n\nУведомлять через:"
+                else:
+                    reminder_text = f"{emoji} {activity_name}?\n{time_str}\n\nУведомления отключены 🔕. Уведомлять через:"
+
                 # Отправляем сообщение с кнопками
                 await self.bot.send_message(
                     chat_id=user_id,
-                    text=f"{emoji} {activity_name}?\n{time_str}\n\nУведомлять через:",
-                    reply_markup=get_reminder_buttons_keyboard(current_interval_minutes)
+                    text=reminder_text,
+                    reply_markup=get_reminder_buttons_keyboard(current_interval_minutes, notifications_enabled)
                 )
             else:
                 # Если нет активности
+                # Формируем текст в зависимости от статуса уведомлений
+                if notifications_enabled:
+                    reminder_text = "❓ Чем занят?\n\nУведомлять через:"
+                else:
+                    reminder_text = "❓ Чем занят?\n\nУведомления отключены 🔕. Уведомлять через:"
+
                 await self.bot.send_message(
                     chat_id=user_id,
-                    text="❓ Чем занят?\n\nУведомлять через:",
-                    reply_markup=get_reminder_buttons_keyboard(current_interval_minutes)
+                    text=reminder_text,
+                    reply_markup=get_reminder_buttons_keyboard(current_interval_minutes, notifications_enabled)
                 )
 
         except Exception as e:
