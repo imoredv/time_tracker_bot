@@ -375,6 +375,7 @@ def get_stats_last_24_hours(user_id):
 def get_daily_stats(user_id, target_date=None):
     """
     Статистика за день с учетом текущей активности и часового пояса пользователя.
+    Теперь учитывает активность, начатую в предыдущий день, но продолжающуюся в целевой день.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -423,7 +424,7 @@ def get_daily_stats(user_id, target_date=None):
         else:
             target_date = user_now.date()
 
-    # Получаем все активности пользователя
+    # Получаем ВСЕ активности пользователя, включая текущие
     cursor.execute('''
         SELECT activity_type, start_time, duration_seconds
         FROM activities 
@@ -436,11 +437,26 @@ def get_daily_stats(user_id, target_date=None):
 
     stats_dict = {}
 
+    # Получаем начало и конец целевого дня в часовом поясе пользователя
+    try:
+        import pytz
+        user_tz = pytz.timezone(user_tz_name)
+        # Начало дня (00:00:00)
+        day_start = user_tz.localize(datetime.combine(target_date, datetime.min.time()))
+        # Конец дня (23:59:59.999999)
+        day_end = user_tz.localize(datetime.combine(target_date, datetime.max.time()))
+        day_end = day_end.replace(hour=23, minute=59, second=59, microsecond=999999)
+    except:
+        # Fallback на UTC
+        day_start = datetime.combine(target_date, datetime.min.time())
+        day_end = datetime.combine(target_date, datetime.max.time())
+        day_end = day_end.replace(hour=23, minute=59, second=59, microsecond=999999)
+
     for activity_type, start_time_str, duration_seconds in all_activities:
         start_time_utc = datetime.fromisoformat(start_time_str)
 
         try:
-            # Конвертируем в локальное время пользователя
+            # Конвертируем время начала активности в часовой пояс пользователя
             if 'user_tz' in locals():
                 start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
             else:
@@ -448,53 +464,66 @@ def get_daily_stats(user_id, target_date=None):
         except:
             start_time_local = start_time_utc
 
-        # Проверяем, относится ли активность к нужному дню в локальном времени
-        if start_time_local.date() != target_date:
-            continue
-
+        # Определяем время окончания активности
         if duration_seconds is not None:
             # Завершенная активность
-            if activity_type in stats_dict:
-                stats_dict[activity_type] += duration_seconds
-            else:
-                stats_dict[activity_type] = duration_seconds
+            end_time_utc = start_time_utc + timedelta(seconds=duration_seconds)
+            try:
+                if 'user_tz' in locals():
+                    end_time_local = end_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                else:
+                    end_time_local = end_time_utc
+            except:
+                end_time_local = end_time_utc
         else:
-            # Текущая активность (не завершена)
+            # Текущая активность (не завершена) - используем текущее время
             current_time = datetime.now()
             try:
                 if 'user_tz' in locals():
                     current_time_local = current_time.replace(tzinfo=pytz.UTC).astimezone(user_tz)
+                    end_time_local = current_time_local
+                    end_time_utc = current_time.replace(tzinfo=pytz.UTC)
                 else:
-                    current_time_local = current_time
+                    end_time_local = current_time
+                    end_time_utc = current_time
             except:
-                current_time_local = current_time
+                end_time_local = current_time
+                end_time_utc = current_time
 
-            # Проверяем, началась ли текущая активность в этот же день
-            if start_time_local.date() == current_time_local.date():
-                # Рассчитываем продолжительность текущей активности
-                # Важно: используем ОДИНАКОВЫЕ часовые пояса для расчета!
-                if start_time_local.tzinfo is None or current_time_local.tzinfo is None:
-                    # Если нет информации о часовом поясе, считаем в UTC
-                    if start_time_local.tzinfo is None:
-                        start_time_for_calc = start_time_local.replace(tzinfo=pytz.UTC)
-                    else:
-                        start_time_for_calc = start_time_local
+        # Проверяем, пересекается ли активность с целевым днем
+        # Активность пересекается с днем, если:
+        # 1. Она началась в этот день ИЛИ
+        # 2. Она закончилась в этот день ИЛИ
+        # 3. Она началась до этого дня и закончилась после него
 
-                    if current_time_local.tzinfo is None:
-                        current_time_for_calc = current_time_local.replace(tzinfo=pytz.UTC)
-                    else:
-                        current_time_for_calc = current_time_local
-                else:
-                    # Оба времени имеют часовой пояс - используем их как есть
-                    start_time_for_calc = start_time_local
-                    current_time_for_calc = current_time_local
+        activity_in_day = False
 
-                current_duration = int((current_time_for_calc - start_time_for_calc).total_seconds())
+        # Если активность началась и закончилась до начала дня - пропускаем
+        if end_time_local < day_start:
+            continue
 
+        # Если активность началась после конца дня - пропускаем
+        if start_time_local > day_end:
+            continue
+
+        # Активность пересекается с днем
+        activity_in_day = True
+
+        if activity_in_day:
+            # Рассчитываем продолжительность активности в рамках этого дня
+            # Начало периода активности в рамках дня
+            activity_start_in_day = max(start_time_local, day_start)
+            # Конец периода активности в рамках дня
+            activity_end_in_day = min(end_time_local, day_end)
+
+            # Продолжительность в секундах
+            duration_in_day = int((activity_end_in_day - activity_start_in_day).total_seconds())
+
+            if duration_in_day > 0:
                 if activity_type in stats_dict:
-                    stats_dict[activity_type] += current_duration
+                    stats_dict[activity_type] += duration_in_day
                 else:
-                    stats_dict[activity_type] = current_duration
+                    stats_dict[activity_type] = duration_in_day
 
     from config import ACTIVITIES
     result = []
