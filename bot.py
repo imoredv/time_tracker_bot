@@ -480,8 +480,6 @@ async def handle_interval_callback(callback: types.CallbackQuery):
 
     await callback.answer(f"Установлено: {format_interval(interval)}")
 
-
-# bot.py
 @dp.callback_query(F.data.startswith("remind_"))
 async def handle_reminder_interval_callback(callback: types.CallbackQuery):
     """Выбор интервала напоминания в ответ на уведомление."""
@@ -499,20 +497,8 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
             if key.startswith(str(user_id)):
                 del reminder_manager.user_next_reminder_time[key]
 
-        # Редактируем сообщение с информацией об установке интервала
-        try:
-            await callback.message.edit_text(
-                f"✅ Уведомления установлены на каждые {interval_minutes} минут"
-            )
-        except:
-            pass
-
-        # Удаляем сообщение через 2 секунды
-        await asyncio.sleep(2)
-        try:
-            await bot.delete_message(chat_id=user_id, message_id=callback.message.message_id)
-        except:
-            pass
+        # Показываем временное уведомление на 3 секунды
+        await show_temporary_notification(user_id, interval_seconds, callback.message.message_id)
 
         await callback.answer(f"Установлено: каждые {interval_minutes} минут")
 
@@ -520,7 +506,6 @@ async def handle_reminder_interval_callback(callback: types.CallbackQuery):
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
 
-# bot.py
 @dp.callback_query(F.data.startswith("activity_remind_"))
 async def handle_activity_reminder_callback(callback: types.CallbackQuery, state: FSMContext):
     """Выбор интервала уведомлений при смене активности."""
@@ -542,27 +527,8 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         activity_type = data.get('activity_type', 'work')
         reminder_message_id = data.get('reminder_message_id')
 
-        # Удаляем сообщение с клавиатурой выбора интервала
-        try:
-            if reminder_message_id:
-                await bot.delete_message(chat_id=user_id, message_id=reminder_message_id)
-        except:
-            pass
-
-        # Редактируем callback-сообщение с информацией об установке интервала
-        try:
-            await callback.message.edit_text(
-                f"✅ Уведомления установлены на каждые {interval_minutes} минут"
-            )
-        except:
-            pass
-
-        # Удаляем само callback-сообщение через 2 секунды
-        await asyncio.sleep(2)
-        try:
-            await bot.delete_message(chat_id=user_id, message_id=callback.message.message_id)
-        except:
-            pass
+        # Показываем временное уведомление на 3 секунды
+        await show_temporary_notification(user_id, interval_seconds, reminder_message_id)
 
         await callback.answer(f"Интервал: {interval_minutes} мин")
         await state.clear()
@@ -571,26 +537,38 @@ async def handle_activity_reminder_callback(callback: types.CallbackQuery, state
         await callback.answer(f"Ошибка: {e}", show_alert=True)
         await state.clear()
 
-"""@dp.callback_query(F.data == "toggle_notif")
-async def handle_toggle_notif(callback: types.CallbackQuery):
-    """"""Переключение уведомлений.""""""
-    user_id = callback.from_user.id
-    settings = get_user_settings(user_id)
 
-    if settings:
-        new_value = 0 if settings['notifications_enabled'] else 1
-        update_user_setting(user_id, 'notifications_enabled', new_value)
+async def show_temporary_notification(user_id: int, interval_seconds: int, message_to_delete_id: int = None):
+    """Показать временное уведомление на 3 секунды."""
+    try:
+        # Форматируем интервал
+        if interval_seconds < 60:
+            interval_text = f"{interval_seconds} секунд"
+        elif interval_seconds < 3600:
+            minutes = interval_seconds // 60
+            interval_text = f"{minutes} минут"
+        else:
+            hours = interval_seconds // 3600
+            interval_text = f"{hours} час" + ("а" if 2 <= hours <= 4 else "" if 1 <= hours <= 1 else "ов")
 
-        interval = settings['reminder_interval']
-        interval_text = format_interval(interval)
-        status_text = "включены" if new_value else "выключены"
+        # Отправляем сообщение
+        msg = await bot.send_message(user_id, f"Уведомления через {interval_text}.")
 
-        await callback.message.edit_text(
-            f"⏰ Напоминания\nИнтервал: {interval_text}\nСтатус: {status_text}",
-            reply_markup=get_reminder_interval_keyboard(interval, bool(new_value))
-        )
-    await callback.answer()"""
+        # Ждем 3 секунды
+        await asyncio.sleep(3)
 
+        # Удаляем сообщение
+        await bot.delete_message(chat_id=user_id, message_id=msg.message_id)
+
+        # Если нужно удалить предыдущее сообщение (с клавиатурой)
+        if message_to_delete_id:
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=message_to_delete_id)
+            except:
+                pass
+
+    except Exception as e:
+        print(f"Ошибка показа временного уведомления: {e}")
 
 @dp.callback_query(F.data == "toggle_quiet")
 async def handle_toggle_quiet(callback: types.CallbackQuery):
