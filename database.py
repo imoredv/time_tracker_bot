@@ -600,6 +600,7 @@ def get_hourly_activity_stats(user_id, days=1):
     Теперь: 24 интервала (каждый 1 час) вместо 48 (каждый 30 минут).
     Для текущего дня возвращает только прошедшие часы.
     Возвращает только дни, в которых есть реальные данные из базы.
+    Для каждого часа выбирается активность с МАКСИМАЛЬНОЙ продолжительностью в этом часу.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -696,7 +697,12 @@ def get_hourly_activity_stats(user_id, days=1):
 
         # Для текущего дня показываем только прошедшие часы
         hours_to_show = current_hour if is_today else 24
-        hourly_stats = [('rest', 0)] * hours_to_show  # Только прошедшие часы для сегодня
+
+        # Создаем структуру для хранения статистики по активностям в каждом часу
+        # hourly_activity_stats[hour] = {activity_type: total_seconds}
+        hourly_activity_stats = []
+        for hour in range(hours_to_show):
+            hourly_activity_stats.append({})
 
         day_activities = activities_by_day[current_day]
 
@@ -737,7 +743,7 @@ def get_hourly_activity_stats(user_id, days=1):
                 if interval_num < 0 or interval_num >= 24:
                     break
 
-                # Увеличиваем счетчик секунд в этом часе, а не заменяем
+                # Увеличиваем счетчик секунд для этой активности в этом часу
                 interval_end_time = interval_start.replace(
                     minute=0,
                     second=0,
@@ -749,20 +755,25 @@ def get_hourly_activity_stats(user_id, days=1):
                     (min(interval_end_time, end_time_local) - interval_start).total_seconds()
                 )
 
-                # Суммируем секунды в этом часе, а не берем максимум
-                current_seconds = hourly_stats[interval_num][1]
-                hourly_stats[interval_num] = (activity_type, current_seconds + seconds_in_interval)
+                # Добавляем секунды к соответствующей активности в этом часу
+                if activity_type not in hourly_activity_stats[interval_num]:
+                    hourly_activity_stats[interval_num][activity_type] = seconds_in_interval
+                else:
+                    hourly_activity_stats[interval_num][activity_type] += seconds_in_interval
 
                 interval_start = interval_end_time
                 remaining_seconds -= seconds_in_interval
 
         # После обработки всех активностей, для каждого часа выбираем доминирующую активность
         processed_hourly_stats = []
-        for activity_type, total_seconds in hourly_stats:
-            if total_seconds > 0:
-                # Для графика используем доминирующую активность (самую долгую в этом часе)
+        for hour_stats in hourly_activity_stats:
+            if hour_stats:
+                # Находим активность с максимальной продолжительностью в этом часу
+                dominant_activity = max(hour_stats.items(), key=lambda x: x[1])
+                activity_type, total_seconds = dominant_activity
                 processed_hourly_stats.append((activity_type, total_seconds))
             else:
+                # Если в этом часу не было активности - ставим отдых
                 processed_hourly_stats.append(('rest', 0))
 
         days_stats_with_dates.append((current_day, processed_hourly_stats))
