@@ -31,9 +31,9 @@ from utils import (
     format_user_local_time, get_timezone_display_name,
     format_all_settings, format_interval
 )
-
 from timezone_manager import timezone_manager
 from statistics import get_daily_statistics, get_week_statistics
+from activity_log import get_activity_log
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN)
@@ -322,6 +322,13 @@ async def handle_statistics(message: types.Message):
             "⚠️ Произошла ошибка при получении статистики. Попробуйте позже.",
             reply_markup=get_main_keyboard_with_current(message.from_user.id)
         )
+
+@dp.message(F.text == "📜 Лог")
+async def handle_activity_log(message: types.Message):
+    """Лог смен активностей за последние дни."""
+    user_id = message.from_user.id
+    log_text = await get_activity_log(user_id)
+    await message.answer(log_text, reply_markup=get_statistics_keyboard())
 
 
 @dp.message(F.text == "📅 Неделя")

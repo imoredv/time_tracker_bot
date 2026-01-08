@@ -1173,3 +1173,95 @@ def debug_stats_last_24_hours(user_id):
     print("===============================\n")
 
     return stats
+
+
+def get_activity_log_data(user_id, days=7):
+    """
+    Получение лога смен активностей за указанное количество дней.
+
+    Args:
+        user_id: ID пользователя
+        days: количество дней (по умолчанию 7)
+
+    Returns:
+        list: список кортежей (timestamp, from_activity, to_activity)
+    """
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Рассчитываем дату начала периода
+    start_date = datetime.now() - timedelta(days=days)
+
+    # Для отладки посмотрим формат дат в базе
+    cursor.execute('''
+        SELECT start_time 
+        FROM activities 
+        WHERE user_id = ? 
+        ORDER BY start_time DESC 
+        LIMIT 1
+    ''', (user_id,))
+
+    sample_date = cursor.fetchone()
+    if sample_date:
+        print(f"DEBUG: Пример даты в базе для пользователя {user_id}: {sample_date[0]}")
+
+    # Форматируем дату в правильном формате для SQLite
+    start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+    print(f"DEBUG: Ищем данные с даты: {start_date_str}")
+
+    try:
+        # Получаем все активности пользователя за период, отсортированные по времени
+        cursor.execute('''
+            SELECT start_time, activity_type 
+            FROM activities 
+            WHERE user_id = ? AND start_time >= ?
+            ORDER BY start_time ASC
+        ''', (user_id, start_date_str))
+
+        activities = cursor.fetchall()
+        print(f"DEBUG: Найдено {len(activities)} активностей")
+
+    except Exception as e:
+        print(f"DEBUG: Ошибка SQL запроса: {e}")
+        # Попробуем другой подход - получить все данные и отфильтровать в коде
+        cursor.execute('''
+            SELECT start_time, activity_type 
+            FROM activities 
+            WHERE user_id = ?
+            ORDER BY start_time ASC
+        ''', (user_id,))
+
+        all_activities = cursor.fetchall()
+        print(f"DEBUG: Всего активностей у пользователя: {len(all_activities)}")
+
+        # Фильтруем по дате в коде
+        activities = []
+        for start_time_str, activity_type in all_activities:
+            try:
+                # Пробуем разные форматы даты
+                if 'T' in start_time_str:
+                    # ISO format: 2024-01-01T12:00:00
+                    activity_time = datetime.fromisoformat(start_time_str.replace('T', ' '))
+                else:
+                    # Пытаемся разобрать как есть
+                    activity_time = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
+
+                if activity_time >= start_date:
+                    activities.append((start_time_str, activity_type))
+            except Exception as parse_error:
+                print(f"DEBUG: Ошибка парсинга даты '{start_time_str}': {parse_error}")
+
+    conn.close()
+
+    # Формируем лог смен активностей
+    log_entries = []
+
+    for i in range(1, len(activities)):
+        current_time, current_activity = activities[i]
+        prev_time, prev_activity = activities[i - 1]
+
+        # Добавляем запись о смене активности
+        log_entries.append((current_time, prev_activity, current_activity))
+
+    return log_entries
