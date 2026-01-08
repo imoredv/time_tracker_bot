@@ -292,6 +292,16 @@ def get_stats_last_24_hours(user_id):
         'rest': 0
     }
 
+    # Проверяем, есть ли вообще активности
+    if not all_activities:
+        # Нет активностей - возвращаем все нули
+        print("DEBUG: Нет активностей за последние 24 часа")
+        from config import ACTIVITIES
+        result = []
+        for activity_type in ACTIVITIES.keys():
+            result.append((activity_type, 0))
+        return result
+
     # Обрабатываем активности
     previous_end_time = time_24_hours_ago
     total_tracked_time = 0
@@ -333,28 +343,6 @@ def get_stats_last_24_hours(user_id):
         if final_gap > 0:
             stats_dict['rest'] += final_gap
             print(f"DEBUG: Финальный промежуток отдыха: {final_gap} сек")
-
-    # Проверяем, что учтены все 24 часа
-    total_seconds = sum(stats_dict.values())
-    expected_seconds = 24 * 3600  # 24 часа в секундах
-    missing_seconds = expected_seconds - total_seconds
-
-    print(f"DEBUG: Всего учтено: {total_seconds} сек")
-    print(f"DEBUG: Ожидалось: {expected_seconds} сек")
-    print(f"DEBUG: Не хватает: {missing_seconds} сек")
-
-    # Если есть незаполненное время, добавляем как отдых
-    if missing_seconds > 0:
-        stats_dict['rest'] += missing_seconds
-        print(f"DEBUG: Добавлено отдыха за пропущенное время: {missing_seconds} сек")
-
-    # Корректируем статистику - не может быть больше 24 часов
-    total_seconds = sum(stats_dict.values())
-    if total_seconds > expected_seconds:
-        # Если перебор, уменьшаем отдых
-        excess = total_seconds - expected_seconds
-        stats_dict['rest'] = max(0, stats_dict['rest'] - excess)
-        print(f"DEBUG: Уменьшено отдыха на перебор: {excess} сек")
 
     from config import ACTIVITIES
     result = []
