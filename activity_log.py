@@ -15,6 +15,8 @@ def format_activity_log(activities, user_id):
 
     Args:
         activities: список кортежей (timestamp, from_activity, to_activity)
+                    Для самой первой активности за всю историю: (timestamp, None, activity_type) - СТАРТ
+                    Для всех остальных смен: (timestamp, from_activity, to_activity) -> переход
         user_id: ID пользователя для определения часового пояса
 
     Returns:
@@ -71,16 +73,20 @@ def format_activity_log(activities, user_id):
         date_str = local_time.strftime("%d.%m.%Y")
         time_str = local_time.strftime("%H:%M:%S")
 
-        # Получаем названия активностей
-        from_name = ACTIVITIES.get(from_activity, from_activity)
-        to_name = ACTIVITIES.get(to_activity, to_activity)
-
         # Получаем эмодзи
-        from_emoji = get_activity_emoji(from_activity)
         to_emoji = get_activity_emoji(to_activity)
 
-        # Форматируем строку
-        log_entry = f"{time_str} {from_emoji}{from_name} -> {to_emoji}{to_name}"
+        # Форматируем строку в зависимости от типа записи
+        if from_activity is None:
+            # Это СТАРТ самой первой активности за всю историю
+            to_name = ACTIVITIES.get(to_activity, to_activity)
+            log_entry = f"{time_str} {to_emoji}{to_name} СТАРТ"
+        else:
+            # Это смена активности
+            from_name = ACTIVITIES.get(from_activity, from_activity)
+            to_name = ACTIVITIES.get(to_activity, to_activity)
+            from_emoji = get_activity_emoji(from_activity)
+            log_entry = f"{time_str} {from_emoji}{from_name} -> {to_emoji}{to_name}"
 
         # Группируем по дате
         if date_str not in log_by_date:
@@ -89,7 +95,7 @@ def format_activity_log(activities, user_id):
 
     # Формируем итоговый текст (от старых дат к новым)
     result_lines = []
-    for date_str in sorted(log_by_date.keys()):  # Убрали reverse=True
+    for date_str in sorted(log_by_date.keys()):
         result_lines.append(date_str)
         # Выводим записи в порядке от старых к новым в пределах дня
         for log_entry in log_by_date[date_str]:

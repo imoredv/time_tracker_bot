@@ -1159,6 +1159,8 @@ def get_activity_log_data(user_id, days=7):
 
     Returns:
         list: список кортежей (timestamp, from_activity, to_activity)
+        Для самой первой активности за всю историю: (timestamp, None, activity_type) - СТАРТ
+        Для всех остальных смен: (timestamp, from_activity, to_activity) - смена активности
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -1167,38 +1169,8 @@ def get_activity_log_data(user_id, days=7):
     # Рассчитываем дату начала периода
     start_date = datetime.now() - timedelta(days=days)
 
-    # Для отладки посмотрим формат дат в базе
-    cursor.execute('''
-        SELECT start_time 
-        FROM activities 
-        WHERE user_id = ? 
-        ORDER BY start_time DESC 
-        LIMIT 1
-    ''', (user_id,))
-
-    sample_date = cursor.fetchone()
-    if sample_date:
-        print(f"DEBUG: Пример даты в базе для пользователя {user_id}: {sample_date[0]}")
-
-    # Форматируем дату в правильном формате для SQLite
-    start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"DEBUG: Ищем данные с даты: {start_date_str}")
-
     try:
-        # Получаем все активности пользователя за период, отсортированные по времени
-        cursor.execute('''
-            SELECT start_time, activity_type 
-            FROM activities 
-            WHERE user_id = ? AND start_time >= ?
-            ORDER BY start_time ASC
-        ''', (user_id, start_date_str))
-
-        activities = cursor.fetchall()
-        print(f"DEBUG: Найдено {len(activities)} активностей")
-
-    except Exception as e:
-        print(f"DEBUG: Ошибка SQL запроса: {e}")
-        # Попробуем другой подход - получить все данные и отфильтровать в коде
+        # Получаем ВСЕ активности пользователя за ВСЕ время, отсортированные по времени
         cursor.execute('''
             SELECT start_time, activity_type 
             FROM activities 
@@ -1209,7 +1181,7 @@ def get_activity_log_data(user_id, days=7):
         all_activities = cursor.fetchall()
         print(f"DEBUG: Всего активностей у пользователя: {len(all_activities)}")
 
-        # Фильтруем по дате в коде
+        # Фильтруем по дате в коде (только за указанный период)
         activities = []
         for start_time_str, activity_type in all_activities:
             try:
@@ -1226,16 +1198,86 @@ def get_activity_log_data(user_id, days=7):
             except Exception as parse_error:
                 print(f"DEBUG: Ошибка парсинга даты '{start_time_str}': {parse_error}")
 
+        print(f"DEBUG: Активностей за период {days} дней: {len(activities)}")
+
+    except Exception as e:
+        print(f"DEBUG: Ошибка SQL запроса: {e}")
+        # Альтернативный запрос
+        cursor.execute('''
+            SELECT start_time, activity_type 
+            FROM activities 
+            WHERE user_id = ? AND start_time >= ?
+            ORDER BY start_time ASC
+        ''', (user_id, start_date.strftime('%Y-%m-%d %H:%M:%S')))
+
+        activities = cursor.fetchall()
+
     conn.close()
 
     # Формируем лог смен активностей
     log_entries = []
 
-    for i in range(1, len(activities)):
-        current_time, current_activity = activities[i]
-        prev_time, prev_activity = activities[i - 1]
+    if activities:
+        # Проверяем, является ли первая активность в выборке самой первой активностью за всю историю
+        is_first_activity_in_history = False
 
-        # Добавляем запись о смене активности
-        log_entries.append((current_time, prev_activity, current_activity))
+        # Получаем самую первую активность пользователя за всю историю
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT start_time, activity_type 
+            FROM activities 
+            WHERE user_id = ?
+            ORDER BY start_time ASC
+            LIMIT 1
+        ''', (user_id,))
+
+        first_activity_in_history = cursor.fetchone()
+        conn.close()
+
+        if first_activity_in_history:
+            first_history_time_str, first_history_activity = first_activity_in_history
+            first_in_period_time_str, first_in_period_activity = activities[0]
+
+            # Сравниваем время первой активности в периоде с самой первой активностью в истории
+            try:
+                if 'T' in first_history_time_str:
+                    first_history_time = datetime.fromisoformat(first_history_time_str.replace('T', ' '))
+                else:
+                    first_history_time = datetime.strptime(first_history_time_str, '%Y-%m-%d %H:%M:%S')
+
+                if 'T' in first_in_period_time_str:
+                    first_in_period_time = datetime.fromisoformat(first_in_period_time_str.replace('T', ' '))
+                else:
+                    first_in_period_time = datetime.strptime(first_in_period_time_str, '%Y-%m-%d %H:%M:%S')
+
+                # Если это одна и та же активность по времени - это СТАРТ
+                if first_history_time == first_in_period_time:
+                    is_first_activity_in_history = True
+                    print(f"DEBUG: Первая активность в периоде является СТАРТом")
+            except:
+                # В случае ошибки парсинга, считаем по строковому сравнению
+                if first_history_time_str == first_in_period_time_str:
+                    is_first_activity_in_history = True
+                    print(f"DEBUG: Первая активность в периоде является СТАРТом")
+
+        # Добавляем записи
+        for i in range(len(activities)):
+            current_time, current_activity = activities[i]
+
+            if i == 0 and is_first_activity_in_history:
+                # Это самая первая активность за всю историю - добавляем как СТАРТ
+                log_entries.append((current_time, None, current_activity))
+            elif i > 0:
+                # Это смена активности
+                prev_time, prev_activity = activities[i - 1]
+                log_entries.append((current_time, prev_activity, current_activity))
+            else:
+                # Это первая активность в периоде, но не первая в истории - просто пропускаем?
+                # Или все-таки показываем как смену с "неизвестной" предыдущей активности?
+                # Лучше показывать как есть, без СТАРТа
+                if i > 0:
+                    prev_time, prev_activity = activities[i - 1]
+                    log_entries.append((current_time, prev_activity, current_activity))
 
     return log_entries
