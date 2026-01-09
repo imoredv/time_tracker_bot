@@ -1166,8 +1166,8 @@ def get_activity_log_data(user_id, days=7):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Рассчитываем дату начала периода в UTC
-    start_date = datetime.utcnow() - timedelta(days=days)
+    # Рассчитываем дату начала периода
+    start_date = datetime.now() - timedelta(days=days)
 
     try:
         # Получаем ВСЕ активности пользователя за ВСЕ время, отсортированные по времени
@@ -1179,12 +1179,13 @@ def get_activity_log_data(user_id, days=7):
         ''', (user_id,))
 
         all_activities = cursor.fetchall()
+        print(f"DEBUG: Всего активностей у пользователя: {len(all_activities)}")
 
         # Фильтруем по дате в коде (только за указанный период)
         activities = []
         for start_time_str, activity_type in all_activities:
             try:
-                # Парсим время как UTC
+                # Пробуем разные форматы даты
                 if 'T' in start_time_str:
                     # ISO format: 2024-01-01T12:00:00
                     activity_time = datetime.fromisoformat(start_time_str.replace('T', ' '))
@@ -1192,15 +1193,16 @@ def get_activity_log_data(user_id, days=7):
                     # Пытаемся разобрать как есть
                     activity_time = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
 
-                # Сравниваем с start_date (который уже в UTC)
                 if activity_time >= start_date:
                     activities.append((start_time_str, activity_type))
             except Exception as parse_error:
                 print(f"DEBUG: Ошибка парсинга даты '{start_time_str}': {parse_error}")
 
+        print(f"DEBUG: Активностей за период {days} дней: {len(activities)}")
+
     except Exception as e:
         print(f"DEBUG: Ошибка SQL запроса: {e}")
-        # Альтернативный запрос с фильтрацией по UTC
+        # Альтернативный запрос
         cursor.execute('''
             SELECT start_time, activity_type 
             FROM activities 
@@ -1252,10 +1254,12 @@ def get_activity_log_data(user_id, days=7):
                 # Если это одна и та же активность по времени - это СТАРТ
                 if first_history_time == first_in_period_time:
                     is_first_activity_in_history = True
+                    print(f"DEBUG: Первая активность в периоде является СТАРТом")
             except:
                 # В случае ошибки парсинга, считаем по строковому сравнению
                 if first_history_time_str == first_in_period_time_str:
                     is_first_activity_in_history = True
+                    print(f"DEBUG: Первая активность в периоде является СТАРТом")
 
         # Добавляем записи
         for i in range(len(activities)):
@@ -1268,5 +1272,12 @@ def get_activity_log_data(user_id, days=7):
                 # Это смена активности
                 prev_time, prev_activity = activities[i - 1]
                 log_entries.append((current_time, prev_activity, current_activity))
+            else:
+                # Это первая активность в периоде, но не первая в истории - просто пропускаем?
+                # Или все-таки показываем как смену с "неизвестной" предыдущей активности?
+                # Лучше показывать как есть, без СТАРТа
+                if i > 0:
+                    prev_time, prev_activity = activities[i - 1]
+                    log_entries.append((current_time, prev_activity, current_activity))
 
     return log_entries

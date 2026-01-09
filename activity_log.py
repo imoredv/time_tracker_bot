@@ -32,7 +32,6 @@ def format_activity_log(activities, user_id):
 
     # Получаем часовой пояс пользователя
     timezone_code = get_user_timezone(user_id)
-    print(f"DEBUG: Часовой пояс пользователя {user_id}: {timezone_code}")
 
     # Маппинг часовых поясов для pytz
     tz_mapping = {
@@ -52,67 +51,42 @@ def format_activity_log(activities, user_id):
     }
 
     user_tz_name = tz_mapping.get(timezone_code, 'UTC')
-    print(f"DEBUG: Имя часового пояса pytz: {user_tz_name}")
 
     try:
         user_tz = pytz.timezone(user_tz_name)
-        print(f"DEBUG: Часовой пояс создан: {user_tz}")
     except Exception as e:
-        print(f"DEBUG: Ошибка создания часового пояса: {e}")
         user_tz = pytz.UTC
 
     log_by_date = {}
 
-    for i, (timestamp_str, from_activity, to_activity) in enumerate(activities[:3]):  # Смотрим первые 3 записи
-        print(f"\nDEBUG Запись {i}: timestamp_str='{timestamp_str}'")
-
+    for timestamp_str, from_activity, to_activity in activities:
         # Парсим время (хранится в UTC)
         try:
-            # Преобразуем строку в datetime
-            # Пробуем разные форматы
-            timestamp_utc = None
-            formats_to_try = [
-                '%Y-%m-%d %H:%M:%S',
-                '%Y-%m-%dT%H:%M:%S',
-                '%Y-%m-%d %H:%M:%S.%f',
-                '%Y-%m-%dT%H:%M:%S.%f'
-            ]
+            # Преобразуем строку в datetime в UTC
+            if 'T' in timestamp_str:
+                # ISO format: 2024-01-01T12:00:00
+                timestamp_utc = datetime.fromisoformat(timestamp_str.replace('T', ' '))
+            else:
+                # Пытаемся разобрать как есть
+                timestamp_utc = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
 
-            for fmt in formats_to_try:
-                try:
-                    timestamp_utc = datetime.strptime(timestamp_str, fmt)
-                    print(f"DEBUG: Успешно парсинг с форматом {fmt}")
-                    break
-                except:
-                    continue
-
-            if timestamp_utc is None:
-                print(f"DEBUG: Не удалось распарсить время: {timestamp_str}")
-                continue
-
-            print(f"DEBUG: Время после парсинга (без tz): {timestamp_utc}")
-
-            # Предполагаем, что время в базе в UTC
+            # Добавляем информацию о часовом поясе UTC
             timestamp_utc = pytz.UTC.localize(timestamp_utc)
-            print(f"DEBUG: Время в UTC: {timestamp_utc}")
 
         except Exception as e:
-            print(f"DEBUG: Ошибка парсинга времени '{timestamp_str}': {e}")
+            print(f"DEBUG LOG: Ошибка парсинга времени '{timestamp_str}': {e}")
             continue
 
         # Конвертируем в локальное время пользователя
         try:
             local_time = timestamp_utc.astimezone(user_tz)
-            print(f"DEBUG: Локальное время: {local_time}")
-            print(f"DEBUG: Разница UTC-локальное: {timestamp_utc} -> {local_time}")
         except Exception as e:
-            print(f"DEBUG: Ошибка конвертации времени: {e}")
+            print(f"DEBUG LOG: Ошибка конвертации времени: {e}")
             local_time = timestamp_utc
 
         # Форматируем дату и время
         date_str = local_time.strftime("%d.%m.%Y")
         time_str = local_time.strftime("%H:%M:%S")
-        print(f"DEBUG: Форматированное время: {date_str} {time_str}")
 
         # Получаем эмодзи
         to_emoji = get_activity_emoji(to_activity)
@@ -133,45 +107,6 @@ def format_activity_log(activities, user_id):
         if date_str not in log_by_date:
             log_by_date[date_str] = []
         log_by_date[date_str].append(log_entry)
-
-    # Теперь обработаем остальные записи без отладки
-    for timestamp_str, from_activity, to_activity in activities[3:]:
-        try:
-            # Быстрый парсинг
-            timestamp_utc = None
-            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
-                try:
-                    timestamp_utc = datetime.strptime(timestamp_str, fmt)
-                    break
-                except:
-                    continue
-
-            if timestamp_utc is None:
-                continue
-
-            timestamp_utc = pytz.UTC.localize(timestamp_utc)
-            local_time = timestamp_utc.astimezone(user_tz)
-
-            date_str = local_time.strftime("%d.%m.%Y")
-            time_str = local_time.strftime("%H:%M:%S")
-
-            to_emoji = get_activity_emoji(to_activity)
-
-            if from_activity is None:
-                to_name = ACTIVITIES.get(to_activity, to_activity)
-                log_entry = f"{time_str} {to_emoji}{to_name} СТАРТ"
-            else:
-                from_name = ACTIVITIES.get(from_activity, from_activity)
-                to_name = ACTIVITIES.get(to_activity, to_activity)
-                from_emoji = get_activity_emoji(from_activity)
-                log_entry = f"{time_str} {from_emoji}{from_name} -> {to_emoji}{to_name}"
-
-            if date_str not in log_by_date:
-                log_by_date[date_str] = []
-            log_by_date[date_str].append(log_entry)
-
-        except Exception as e:
-            continue
 
     # Формируем итоговый текст (от старых дат к новым)
     result_lines = []
