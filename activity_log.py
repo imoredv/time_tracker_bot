@@ -24,7 +24,6 @@ def format_activity_log(activities, user_id):
         return "Лог активностей пуст."
 
     from database import get_user_timezone
-    from utils import get_user_local_time
 
     # Получаем часовой пояс пользователя
     timezone_code = get_user_timezone(user_id)
@@ -114,25 +113,6 @@ async def get_activity_log(user_id, days=7):
     try:
         activities = get_activity_log_data(user_id, days)
         return format_activity_log(activities, user_id)
-    except Exception as e:
-        print(f"Ошибка получения лога для пользователя {user_id}: {e}")
-        return "⚠️ Произошла ошибка при получении лога. Попробуйте позже."
-
-
-async def get_activity_log(user_id, days=7):
-    """
-    Получает лог смен активностей за указанное количество дней.
-
-    Args:
-        user_id: ID пользователя
-        days: количество дней (по умолчанию 7)
-
-    Returns:
-        str: отформатированный лог
-    """
-    try:
-        activities = get_activity_log_data(user_id, days)
-        return format_activity_log(activities)
     except Exception as e:
         print(f"Ошибка получения лога для пользователя {user_id}: {e}")
         return "⚠️ Произошла ошибка при получении лога. Попробуйте позже."
