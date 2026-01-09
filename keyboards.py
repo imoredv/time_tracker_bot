@@ -89,8 +89,7 @@ def get_statistics_keyboard():
         keyboard=[
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📅 Неделя")],
             [KeyboardButton(text="📅 Месяц"), KeyboardButton(text="📊 Год")],
-            [KeyboardButton(text="📜 Лог")],  # Новая кнопка
-            [KeyboardButton(text="⬅️ Назад")]
+            [KeyboardButton(text="📜 Лог"), KeyboardButton(text="⬅️ Назад")]
         ],
         resize_keyboard=True
     )

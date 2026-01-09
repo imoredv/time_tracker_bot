@@ -11,7 +11,8 @@ from utils import get_activity_emoji
 
 def format_activity_log(activities, user_id):
     """
-    Форматирует список активностей в читаемый лог в локальном времени пользователя.
+    Форматирует список активностей в читаемый лог.
+    Время в базе уже хранится в локальном времени сервера.
 
     Args:
         activities: список кортежей (timestamp, from_activity, to_activity)
@@ -25,49 +26,19 @@ def format_activity_log(activities, user_id):
     if not activities:
         return "Лог активностей пуст."
 
-    from database import get_user_timezone
-
-    # Получаем часовой пояс пользователя
-    timezone_code = get_user_timezone(user_id)
-
-    # Маппинг часовых поясов для pytz
-    tz_mapping = {
-        'Russian Standard Time': 'Europe/Moscow',
-        'FLE Standard Time': 'Europe/Kiev',
-        'Belarus Standard Time': 'Europe/Minsk',
-        'West Asia Standard Time': 'Asia/Yekaterinburg',
-        'Central Asia Standard Time': 'Asia/Almaty',
-        'SE Asia Standard Time': 'Asia/Bangkok',
-        'China Standard Time': 'Asia/Shanghai',
-        'Tokyo Standard Time': 'Asia/Tokyo',
-        'GMT Standard Time': 'Europe/London',
-        'W. Europe Standard Time': 'Europe/Berlin',
-        'Eastern Standard Time': 'America/New_York',
-        'Pacific Standard Time': 'America/Los_Angeles',
-        'UTC': 'UTC',
-    }
-
-    user_tz_name = tz_mapping.get(timezone_code, 'UTC')
-
-    try:
-        import pytz
-        user_tz = pytz.timezone(user_tz_name)
-    except:
-        user_tz = None
+    from datetime import datetime
+    print(f"DEBUG LOG: Текущее время сервера: {datetime.now()}")
+    print(f"DEBUG LOG: Текущее время UTC: {datetime.utcnow()}")
 
     log_by_date = {}
 
     for timestamp_str, from_activity, to_activity in activities:
-        # Парсим время (хранится в UTC)
+        # Парсим время (уже в локальном времени сервера)
         timestamp = datetime.fromisoformat(timestamp_str)
+        print(f"DEBUG LOG: Время из базы: {timestamp_str} -> {timestamp}")
 
-        # Конвертируем в локальное время пользователя
-        if user_tz:
-            # Добавляем информацию о часовом поясе UTC и конвертируем
-            utc_time = timestamp.replace(tzinfo=pytz.UTC)
-            local_time = utc_time.astimezone(user_tz)
-        else:
-            local_time = timestamp
+        # Время уже в правильном формате, не нужно конвертировать
+        local_time = timestamp
 
         # Форматируем дату и время
         date_str = local_time.strftime("%d.%m.%Y")
