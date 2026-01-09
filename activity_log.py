@@ -30,12 +30,8 @@ def format_activity_log(activities, user_id):
     from database import get_user_timezone
     import pytz
 
-    print(f"DEBUG LOG: Текущее время сервера: {datetime.now()}")
-    print(f"DEBUG LOG: Текущее время UTC: {datetime.utcnow()}")
-
     # Получаем часовой пояс пользователя
     timezone_code = get_user_timezone(user_id)
-    print(f"DEBUG LOG: Часовой пояс из базы для пользователя {user_id}: {timezone_code}")
 
     # Маппинг часовых поясов для pytz
     tz_mapping = {
@@ -55,44 +51,42 @@ def format_activity_log(activities, user_id):
     }
 
     user_tz_name = tz_mapping.get(timezone_code, 'UTC')
-    print(f"DEBUG LOG: Имя часового пояса pytz: {user_tz_name}")
 
     try:
         user_tz = pytz.timezone(user_tz_name)
-        print(f"DEBUG LOG: Объект часового пояса создан: {user_tz}")
     except Exception as e:
-        print(f"DEBUG LOG: Ошибка создания часового пояса: {e}")
-        user_tz = None
+        user_tz = pytz.UTC
 
     log_by_date = {}
 
     for timestamp_str, from_activity, to_activity in activities:
         # Парсим время (хранится в UTC)
-        timestamp = datetime.fromisoformat(timestamp_str)
-        print(f"DEBUG LOG: Время из базы (UTC): {timestamp_str} -> {timestamp}")
+        try:
+            # Преобразуем строку в datetime в UTC
+            if 'T' in timestamp_str:
+                # ISO format: 2024-01-01T12:00:00
+                timestamp_utc = datetime.fromisoformat(timestamp_str.replace('T', ' '))
+            else:
+                # Пытаемся разобрать как есть
+                timestamp_utc = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+            # Добавляем информацию о часовом поясе UTC
+            timestamp_utc = pytz.UTC.localize(timestamp_utc)
+
+        except Exception as e:
+            print(f"DEBUG LOG: Ошибка парсинга времени '{timestamp_str}': {e}")
+            continue
 
         # Конвертируем в локальное время пользователя
-        if user_tz:
-            try:
-                # Предполагаем, что время в базе в UTC (без часового пояса)
-                # Добавляем часовой пояс UTC
-                utc_time = pytz.UTC.localize(timestamp)
-                print(f"DEBUG LOG: Время с UTC: {utc_time}")
-
-                # Конвертируем в часовой пояс пользователя
-                local_time = utc_time.astimezone(user_tz)
-                print(f"DEBUG LOG: Локальное время пользователя: {local_time}")
-            except Exception as e:
-                print(f"DEBUG LOG: Ошибка конвертации: {e}")
-                local_time = timestamp
-        else:
-            local_time = timestamp
-            print(f"DEBUG LOG: Используется время без конвертации")
+        try:
+            local_time = timestamp_utc.astimezone(user_tz)
+        except Exception as e:
+            print(f"DEBUG LOG: Ошибка конвертации времени: {e}")
+            local_time = timestamp_utc
 
         # Форматируем дату и время
         date_str = local_time.strftime("%d.%m.%Y")
         time_str = local_time.strftime("%H:%M:%S")
-        print(f"DEBUG LOG: Форматированное время: {date_str} {time_str}")
 
         # Получаем эмодзи
         to_emoji = get_activity_emoji(to_activity)
