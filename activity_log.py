@@ -11,8 +11,8 @@ from utils import get_activity_emoji
 
 def format_activity_log(activities, user_id):
     """
-    Форматирует список активностей в читаемый лог.
-    Время в базе уже хранится в локальном времени сервера.
+    Форматирует список активностей в читаемый лог в локальном времени пользователя.
+    Время в базе хранится в UTC.
 
     Args:
         activities: список кортежей (timestamp, from_activity, to_activity)
@@ -27,22 +27,72 @@ def format_activity_log(activities, user_id):
         return "Лог активностей пуст."
 
     from datetime import datetime
+    from database import get_user_timezone
+    import pytz
+
     print(f"DEBUG LOG: Текущее время сервера: {datetime.now()}")
     print(f"DEBUG LOG: Текущее время UTC: {datetime.utcnow()}")
+
+    # Получаем часовой пояс пользователя
+    timezone_code = get_user_timezone(user_id)
+    print(f"DEBUG LOG: Часовой пояс из базы для пользователя {user_id}: {timezone_code}")
+
+    # Маппинг часовых поясов для pytz
+    tz_mapping = {
+        'Russian Standard Time': 'Europe/Moscow',  # UTC+3
+        'FLE Standard Time': 'Europe/Kiev',  # UTC+2
+        'Belarus Standard Time': 'Europe/Minsk',  # UTC+3
+        'West Asia Standard Time': 'Asia/Yekaterinburg',  # UTC+5 (Екатеринбург)
+        'Central Asia Standard Time': 'Asia/Almaty',  # UTC+6
+        'SE Asia Standard Time': 'Asia/Bangkok',  # UTC+7
+        'China Standard Time': 'Asia/Shanghai',  # UTC+8
+        'Tokyo Standard Time': 'Asia/Tokyo',  # UTC+9
+        'GMT Standard Time': 'Europe/London',  # UTC+0
+        'W. Europe Standard Time': 'Europe/Berlin',  # UTC+1
+        'Eastern Standard Time': 'America/New_York',  # UTC-5
+        'Pacific Standard Time': 'America/Los_Angeles',  # UTC-8
+        'UTC': 'UTC',
+    }
+
+    user_tz_name = tz_mapping.get(timezone_code, 'UTC')
+    print(f"DEBUG LOG: Имя часового пояса pytz: {user_tz_name}")
+
+    try:
+        user_tz = pytz.timezone(user_tz_name)
+        print(f"DEBUG LOG: Объект часового пояса создан: {user_tz}")
+    except Exception as e:
+        print(f"DEBUG LOG: Ошибка создания часового пояса: {e}")
+        user_tz = None
 
     log_by_date = {}
 
     for timestamp_str, from_activity, to_activity in activities:
-        # Парсим время (уже в локальном времени сервера)
+        # Парсим время (хранится в UTC)
         timestamp = datetime.fromisoformat(timestamp_str)
-        print(f"DEBUG LOG: Время из базы: {timestamp_str} -> {timestamp}")
+        print(f"DEBUG LOG: Время из базы (UTC): {timestamp_str} -> {timestamp}")
 
-        # Время уже в правильном формате, не нужно конвертировать
-        local_time = timestamp
+        # Конвертируем в локальное время пользователя
+        if user_tz:
+            try:
+                # Предполагаем, что время в базе в UTC (без часового пояса)
+                # Добавляем часовой пояс UTC
+                utc_time = pytz.UTC.localize(timestamp)
+                print(f"DEBUG LOG: Время с UTC: {utc_time}")
+
+                # Конвертируем в часовой пояс пользователя
+                local_time = utc_time.astimezone(user_tz)
+                print(f"DEBUG LOG: Локальное время пользователя: {local_time}")
+            except Exception as e:
+                print(f"DEBUG LOG: Ошибка конвертации: {e}")
+                local_time = timestamp
+        else:
+            local_time = timestamp
+            print(f"DEBUG LOG: Используется время без конвертации")
 
         # Форматируем дату и время
         date_str = local_time.strftime("%d.%m.%Y")
         time_str = local_time.strftime("%H:%M:%S")
+        print(f"DEBUG LOG: Форматированное время: {date_str} {time_str}")
 
         # Получаем эмодзи
         to_emoji = get_activity_emoji(to_activity)
