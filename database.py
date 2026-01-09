@@ -226,7 +226,7 @@ def start_activity(user_id, activity_type):
 def get_stats_last_24_hours(user_id):
     """
     Статистика за последние 24 часа с учетом текущей активности.
-    Учитывает все 24 часа, включая промежутки между активностями.
+    Возвращает только реальные данные без заполнения пустого времени.
     """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -266,93 +266,63 @@ def get_stats_last_24_hours(user_id):
         time_24_hours_ago = user_now - timedelta(hours=24)
         time_24_hours_ago_utc = time_24_hours_ago
 
-    # Получаем ВСЕ активности за последние 24 часа, включая текущую
+    # Получаем только завершенные активности за последние 24 часа
     cursor.execute('''
-        SELECT activity_type, start_time, 
-               COALESCE(duration_seconds, 
-                       strftime('%s', 'now') - strftime('%s', start_time)) as duration
+        SELECT activity_type, start_time, duration_seconds
         FROM activities 
         WHERE user_id = ? 
           AND start_time >= ?
+          AND duration_seconds IS NOT NULL
         ORDER BY start_time
     ''', (user_id, time_24_hours_ago_utc.isoformat()))
 
-    all_activities = cursor.fetchall()
+    completed_activities = cursor.fetchall()
+
+    # Получаем текущую активность отдельно
+    current_activity = get_current_activity(user_id)
+
     conn.close()
 
-    print(f"DEBUG: Всего активностей за 24 часа: {len(all_activities)}")
+    # Словарь для статистики - ТОЛЬКО реальные активности
+    stats_dict = {}
 
-    # Словарь для статистики
-    stats_dict = {
-        'work': 0,
-        'study': 0,
-        'sport': 0,
-        'hobby': 0,
-        'sleep': 0,
-        'rest': 0
-    }
+    # Обрабатываем завершенные активности
+    for activity_type, start_time_str, duration in completed_activities:
+        if duration and duration > 0:  # Проверяем, что продолжительность положительная
+            if activity_type in stats_dict:
+                stats_dict[activity_type] += duration
+            else:
+                stats_dict[activity_type] = duration
 
-    # Проверяем, есть ли вообще активности
-    if not all_activities:
-        # Нет активностей - возвращаем все нули
-        print("DEBUG: Нет активностей за последние 24 часа")
-        from config import ACTIVITIES
-        result = []
-        for activity_type in ACTIVITIES.keys():
-            result.append((activity_type, 0))
-        return result
-
-    # Обрабатываем активности
-    previous_end_time = time_24_hours_ago
-    total_tracked_time = 0
-
-    for i, (activity_type, start_time_str, duration) in enumerate(all_activities):
+    # Обрабатываем текущую активность, если она началась в последние 24 часа
+    if current_activity:
+        current_activity_type, start_time_str = current_activity
         start_time_utc = datetime.fromisoformat(start_time_str)
-        end_time_utc = start_time_utc + timedelta(seconds=duration)
 
         try:
             if 'user_tz' in locals():
                 start_time_local = start_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
-                end_time_local = end_time_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
             else:
                 start_time_local = start_time_utc
-                end_time_local = end_time_utc
         except:
             start_time_local = start_time_utc
-            end_time_local = end_time_utc
 
-        # Добавляем промежуток между активностями как отдых
-        if start_time_local > previous_end_time:
-            gap_duration = int((start_time_local - previous_end_time).total_seconds())
-            if gap_duration > 0:
-                stats_dict['rest'] += gap_duration
-                print(f"DEBUG: Промежуток отдыха {i}: {gap_duration} сек")
-
-        # Добавляем саму активность
-        stats_dict[activity_type] += duration
-        total_tracked_time += duration
-
-        # Обновляем время окончания для следующей проверки
-        previous_end_time = end_time_local
-
-        print(f"DEBUG: Активность {i} {activity_type}: {duration} сек")
-
-    # Добавляем время от последней активности до текущего момента как отдых
-    if user_now > previous_end_time:
-        final_gap = int((user_now - previous_end_time).total_seconds())
-        if final_gap > 0:
-            stats_dict['rest'] += final_gap
-            print(f"DEBUG: Финальный промежуток отдыха: {final_gap} сек")
+        # Проверяем, началась ли текущая активность в последние 24 часа
+        if start_time_local >= time_24_hours_ago:
+            current_duration = int((user_now - start_time_local).total_seconds())
+            if current_duration > 0:  # Убедимся, что продолжительность положительная
+                if current_activity_type in stats_dict:
+                    stats_dict[current_activity_type] += current_duration
+                else:
+                    stats_dict[current_activity_type] = current_duration
 
     from config import ACTIVITIES
     result = []
-    total_final = 0
     for activity_type in ACTIVITIES.keys():
         duration = stats_dict.get(activity_type, 0)
-        total_final += duration
-        result.append((activity_type, duration))
-
-    print(f"DEBUG: Финальная статистика: {total_final} сек = {total_final // 3600}ч:{total_final % 3600 // 60}м")
+        # Возвращаем ТОЛЬКО активности с продолжительностью > 0
+        if duration > 0:
+            result.append((activity_type, duration))
 
     # Сортируем по убыванию времени
     result.sort(key=lambda x: x[1], reverse=True)
@@ -412,7 +382,10 @@ def get_daily_stats(user_id, target_date=None):
         else:
             target_date = user_now.date()
 
-    # Получаем ВСЕ активности пользователя, включая текущие
+    # Получаем текущую активность
+    current_activity = get_current_activity(user_id)
+
+    # Получаем все активности пользователя, включая завершенные
     cursor.execute('''
         SELECT activity_type, start_time, duration_seconds
         FROM activities 
@@ -421,6 +394,23 @@ def get_daily_stats(user_id, target_date=None):
     ''', (user_id,))
 
     all_activities = cursor.fetchall()
+
+    # Добавляем текущую активность, если она есть и еще не в списке
+    activities_list = list(all_activities)
+    if current_activity:
+        activity_type, start_time_str = current_activity
+
+        # Проверяем, есть ли уже эта активность в списке (как незавершенная)
+        found = False
+        for act in activities_list:
+            if act[0] == activity_type and act[1] == start_time_str and act[2] is None:
+                found = True
+                break
+
+        if not found:
+            # Добавляем текущую активность в список
+            activities_list.append((activity_type, start_time_str, None))
+
     conn.close()
 
     stats_dict = {}
@@ -440,7 +430,7 @@ def get_daily_stats(user_id, target_date=None):
         day_end = datetime.combine(target_date, datetime.max.time())
         day_end = day_end.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    for activity_type, start_time_str, duration_seconds in all_activities:
+    for activity_type, start_time_str, duration_seconds in activities_list:
         start_time_utc = datetime.fromisoformat(start_time_str)
 
         try:
@@ -484,8 +474,6 @@ def get_daily_stats(user_id, target_date=None):
         # 2. Она закончилась в этот день ИЛИ
         # 3. Она началась до этого дня и закончилась после него
 
-        activity_in_day = False
-
         # Если активность началась и закончилась до начала дня - пропускаем
         if end_time_local < day_start:
             continue
@@ -495,23 +483,20 @@ def get_daily_stats(user_id, target_date=None):
             continue
 
         # Активность пересекается с днем
-        activity_in_day = True
+        # Рассчитываем продолжительность активности в рамках этого дня
+        # Начало периода активности в рамках дня
+        activity_start_in_day = max(start_time_local, day_start)
+        # Конец периода активности в рамках дня
+        activity_end_in_day = min(end_time_local, day_end)
 
-        if activity_in_day:
-            # Рассчитываем продолжительность активности в рамках этого дня
-            # Начало периода активности в рамках дня
-            activity_start_in_day = max(start_time_local, day_start)
-            # Конец периода активности в рамках дня
-            activity_end_in_day = min(end_time_local, day_end)
+        # Продолжительность в секундах
+        duration_in_day = int((activity_end_in_day - activity_start_in_day).total_seconds())
 
-            # Продолжительность в секундах
-            duration_in_day = int((activity_end_in_day - activity_start_in_day).total_seconds())
-
-            if duration_in_day > 0:
-                if activity_type in stats_dict:
-                    stats_dict[activity_type] += duration_in_day
-                else:
-                    stats_dict[activity_type] = duration_in_day
+        if duration_in_day > 0:
+            if activity_type in stats_dict:
+                stats_dict[activity_type] += duration_in_day
+            else:
+                stats_dict[activity_type] = duration_in_day
 
     from config import ACTIVITIES
     result = []
@@ -520,6 +505,7 @@ def get_daily_stats(user_id, target_date=None):
         result.append((activity_type, duration))
 
     return result
+
 
 def get_daily_stats_sorted(user_id, target_date=None):
     """

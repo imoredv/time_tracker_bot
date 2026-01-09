@@ -31,21 +31,8 @@ async def get_daily_statistics(user_id):
         # Статистика за 2 дня для графиков (вчера и сегодня)
         hourly_stats_with_dates = get_hourly_activity_stats(user_id, 2)
 
-        # Статистика за 24 часа
+        # Статистика за 24 часа - теперь возвращает только реальные активности
         activity_stats_24h = get_total_stats_by_activity(user_id, 1)
-
-        # Отладочный вывод
-        print(f"\n=== DEBUG DAILY STATISTICS ===")
-        print(f"Сегодняшняя дата: {today_date}")
-        print(f"Статистика за 24 часа:")
-        total_24h = 0
-        for act_type, duration in activity_stats_24h:
-            hours = duration // 3600
-            minutes = (duration % 3600) // 60
-            print(f"  {act_type}: {duration} сек = {hours}ч:{minutes:02d}м")
-            total_24h += duration
-        print(f"ИТОГО за 24 часа: {total_24h} сек = {total_24h // 3600}ч:{total_24h % 3600 // 60}м")
-        print("==============================\n")
 
         # Статистика с начала суток (используем сегодняшнюю дату с учетом часового пояса)
         stats_today = get_daily_stats_sorted(user_id, today_date)
@@ -63,18 +50,15 @@ async def get_daily_statistics(user_id):
             if timeline_graph and timeline_graph.strip():
                 message_text += timeline_graph
                 message_text += "\n\n"
-        else:
-            print(f"DEBUG: No hourly stats available")
 
         # Статистика за 24 часа
         message_text += "За 24 часа:\n\n"
 
-        # Фильтруем активности больше 1 минуты для 24 часов
-        filtered_24h = [(act_type, duration) for act_type, duration in activity_stats_24h if duration >= 60]
-
-        # Формируем бар-граф для отфильтрованных активностей (без пометки текущей активности)
-        if filtered_24h:
-            bar_graph_24h = generate_bar_graph_period(filtered_24h, user_id)
+        # Используем ВСЕ активности из activity_stats_24h (теперь там только реальные данные)
+        if activity_stats_24h:
+            # Формируем статистику для 24 часов
+            bar_graph_24h = generate_bar_graph_period(activity_stats_24h,
+                                                      None)  # Не передаем user_id, чтобы не показывать текущую
             if bar_graph_24h:
                 message_text += bar_graph_24h
         else:
@@ -85,49 +69,50 @@ async def get_daily_statistics(user_id):
         # Статистика с начала суток
         message_text += "Сегодня:\n\n"
 
-        # Фильтруем активности больше 1 минуты для сегодня
-        filtered_today = [(act_type, duration) for act_type, duration in stats_today if duration >= 60]
-
-        if filtered_today:
+        if stats_today:
             # Формируем статистику "Сегодня" с зеленой галочкой для текущей активности
             today_lines = []
-            for act_type, duration in filtered_today:
-                activity_name = ACTIVITIES.get(act_type, act_type)
-                emoji = get_activity_emoji(act_type)
-                time_str = format_duration_for_statistics(duration)
+            for act_type, duration in stats_today:
+                if duration >= 60:  # Показываем только активности больше 1 минуты
+                    activity_name = ACTIVITIES.get(act_type, act_type)
+                    emoji = get_activity_emoji(act_type)
+                    time_str = format_duration_for_statistics(duration)
 
-                # Добавляем зеленую галочку только если это текущая активность
-                if act_type == current_activity_type:
-                    activity_line = f"{emoji} {activity_name} {time_str} ✅"
-                else:
-                    activity_line = f"{emoji} {activity_name} {time_str}"
+                    # Добавляем зеленую галочку только если это текущая активность
+                    if act_type == current_activity_type:
+                        activity_line = f"{emoji} {activity_name} {time_str} ✅"
+                    else:
+                        activity_line = f"{emoji} {activity_name} {time_str}"
 
-                today_lines.append(activity_line)
+                    today_lines.append(activity_line)
 
-                # Добавляем бар-граф
-                SECONDS_PER_BLOCK = 3600
-                num_full_blocks = duration // SECONDS_PER_BLOCK
-                remainder = duration % SECONDS_PER_BLOCK
-                has_half_block = remainder >= 1800
+                    # Добавляем бар-граф
+                    SECONDS_PER_BLOCK = 3600
+                    num_full_blocks = duration // SECONDS_PER_BLOCK
+                    remainder = duration % SECONDS_PER_BLOCK
+                    has_half_block = remainder >= 1800
 
-                if num_full_blocks == 0:
-                    if duration > 0:
-                        if has_half_block and duration >= 1800:
-                            bar_line = "▌"
-                        elif duration >= 60:
-                            bar_line = "▌"
+                    if num_full_blocks == 0:
+                        if duration > 0:
+                            if has_half_block and duration >= 1800:
+                                bar_line = "▌"
+                            elif duration >= 60:
+                                bar_line = "▌"
+                            else:
+                                bar_line = ""
                         else:
                             bar_line = ""
                     else:
-                        bar_line = ""
-                else:
-                    bar_line = "█" * num_full_blocks
-                    if has_half_block:
-                        bar_line += "▌"
+                        bar_line = "█" * num_full_blocks
+                        if has_half_block:
+                            bar_line += "▌"
 
-                today_lines.append(bar_line if bar_line else "▌")
+                    today_lines.append(bar_line if bar_line else "▌")
 
-            message_text += "\n".join(today_lines)
+            if today_lines:
+                message_text += "\n".join(today_lines)
+            else:
+                message_text += "Нет данных за сегодня"
         else:
             message_text += "Нет данных за сегодня"
 
